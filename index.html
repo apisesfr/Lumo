@@ -330,12 +330,20 @@ function render(body, text, live) {
   if (live) body.classList.add("caret"); else body.classList.remove("caret");
 }
 
-// Lumo can only keep ~1,000 tokens in mind, so keep the newest messages that fit (~2,800 characters).
+// How much chat Lumo can keep in mind. 1.1 trained on 512-token pieces (~1,600 characters);
+// 2.1 and 3.0 train on 1,024 tokens, so raise this to ~3,200 when the site switches to them.
+const MEMORY_CHARS = 1600;
 function prompt() {
+  // newest messages first, until the memory is full; long old replies get trimmed so recent turns always fit
   const keep = []; let size = 0;
-  for (let i = convo.length - 1; i >= 0; i--) { size += convo[i].content.length; if (keep.length && size > 2800) break; keep.unshift(convo[i]); }
+  for (let i = convo.length - 1; i >= 0; i--) {
+    const m = convo[i], room = MEMORY_CHARS - size;
+    if (room < 80 && keep.length) break;
+    const c = m.content.length > room ? (m.role === "user" ? m.content.slice(-room) : m.content.slice(0, room)) : m.content;
+    keep.unshift({ role: m.role, content: c }); size += c.length;
+  }
   let p = "";
-  for (const m of keep) { const c = m.content.slice(-2800); p += m.role === "user" ? `<|user|>\n${c}\n<|assistant|>\n` : `${c}<|end|>\n`; }
+  for (const m of keep) p += m.role === "user" ? `<|user|>\n${m.content}\n<|assistant|>\n` : `${m.content}<|end|>\n`;
   return p;
 }
 
