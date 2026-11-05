@@ -378,6 +378,9 @@ function findMath(raw) {
   raw = raw.replace(/^\s*(?:\(?\d{1,2}[).:]|[a-h][).])\s+/i, ""); // drop worksheet numbering like "1)" or "b."
   const line = raw.trim();
   const text = normalizeMath(raw);
+  // 0) checking someone's work, like "27 + 45 = 68" (numbers only, an answer after the =)
+  const chk = text.replace(/[`*_]/g, "").match(/([\d.()\s]*\d[\d.()\s]*(?:[+\-*/^][\d.()\s]*\d[\d.()\s]*)+)=\s*(-?[\d,]*\.?\d+)\s*[?.!]?\s*$/);
+  if (chk && !/[a-z]/i.test(chk[1])) return { kind: "verify", expr: chk[1].replace(/\s+/g, ""), claimed: chk[2].replace(/,/g, ""), line };
   // 1) an equation with one letter, like 3x + 7 = 22
   for (const m of text.matchAll(/[0-9a-z+\-*/^().\s]*=[0-9a-z+\-*/^().\s]*/gi)) {
     let eq = m[0].trim().replace(/^[^0-9a-z(\-]+|[^0-9a-z)]+$/gi, "");
@@ -427,6 +430,11 @@ async function solveOne(m) {
   }
   const result = tidyNum(N(m.expr).evaluate().text("decimals"));
   if (!/^-?[\d.]+$/.test(result)) return null;
+  if (m.kind === "verify") {
+    const right = Math.abs(parseFloat(result) - parseFloat(m.claimed)) < 1e-9;
+    const steps = [right ? `✓ Correct! ${pretty(m.expr)} = ${result}` : `✗ Not quite. ${pretty(m.expr)} = ${result}, not ${m.claimed}.`];
+    return { shown: pretty(m.expr), answer: result, steps, simple: true };
+  }
   const steps = [];
   const pct = m.line.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
   if (pct) steps.push(`${pct[1]}% means ${pct[1]} ÷ 100 = ${fnum(pct[1] / 100)}`, `${fnum(pct[1] / 100)} × ${pct[2]} = ${result}`);
