@@ -4,7 +4,8 @@ Lumo is a small AI trained **from scratch** (random weights, own tokenizer) on a
 This website runs Lumo **inside your browser** with [wllama](https://github.com/ngxson/wllama) (llama.cpp in WebAssembly), so chats and photos stay on your device.
 
 - **Model:** Llama-style transformer, 83M parameters (Lumo 1.1), 8-bit GGUF
-- **Photos:** words in pictures are read with [Tesseract.js](https://github.com/naptha/tesseract.js); Lumo can't see drawings or graphs
+- **Photos:** read in the browser by [SmolVLM-256M](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) (Apache-2.0), with [Tesseract.js](https://github.com/naptha/tesseract.js) as a backup
+- **Math:** equations and arithmetic are solved exactly with [nerdamer](https://github.com/jiggzson/nerdamer) and shown as "Checked answer"
 - **Heads up:** Lumo is tiny and makes mistakes. Double-check anything important.
 
 ## Trained on
