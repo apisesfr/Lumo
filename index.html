@@ -91,6 +91,13 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
 .check b{font-family:var(--f-display);font-size:19px;font-weight:700;color:#e9fff1;font-variant-numeric:tabular-nums}
 .step{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);margin:14px 0 4px}
 .step:first-child{margin-top:0}
+.step.prob{text-transform:none;letter-spacing:0;font-size:12.5px}
+.steps{margin:2px 0;padding-left:1.3em;white-space:normal}
+.steps li{margin:3px 0;font-variant-numeric:tabular-nums}
+.steps li::marker{color:var(--amber);font-family:var(--f-mono);font-size:.85em}
+div.steps{padding-left:0;font-size:17px}
+.final{margin:8px 0 2px;color:var(--mist)}
+.final b{color:var(--cream);font-family:var(--f-display);font-size:18px}
 .dots{display:inline-flex;gap:5px;padding:8px 0}
 .dots i{width:7px;height:7px;border-radius:50%;background:var(--amber);opacity:.35;animation:dot 1.1s infinite}
 .dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
@@ -385,14 +392,43 @@ function findMath(raw) {
   return null;
 }
 const tidyNum = (s) => s.replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
+// Exact steps written by the math engine (Lumo 1.1 is too small to explain math reliably yet).
+const pretty = (e) => e.replace(/\*/g, " × ").replace(/\//g, " ÷ ").replace(/([+\-=])/g, " $1 ").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")").replace(/^ - /, "-").trim();
+const fnum = (x) => { const r = Math.round(x * 1e6) / 1e6; return Object.is(r, -0) ? "0" : String(r); };
 async function solveOne(m) {
   const N = window.nerdamer;
+  const val = (e, subs) => parseFloat(N(String(e), subs || {}).evaluate().text("decimals"));
   if (m.kind === "equation") {
-    const sol = N.solveEquations(m.expr, m.v).map((s) => tidyNum(N(s.toString()).evaluate().text("decimals")));
-    return sol.length ? { shown: m.expr.replace(/\*/g, "×"), answer: `${m.v} = ${sol.join(" or ")}` } : null;
+    const v = m.v, [L, R] = m.expr.split("=");
+    const sol = N.solveEquations(m.expr, v).map((s) => tidyNum(N(s.toString()).evaluate().text("decimals")));
+    if (!sol.length) return null;
+    const answer = `${v} = ${sol.join(" or ")}`, steps = [];
+    const linear = (e) => { try { return N.diff(N.diff(e, v), v).evaluate().text() === "0"; } catch { return false; } };
+    if (linear(L) && linear(R)) {
+      const aL = val(N.diff(L, v)), bL = val(L, { [v]: 0 }), aR = val(N.diff(R, v)), bR = val(R, { [v]: 0 });
+      const term = (a) => (a === 1 ? v : a === -1 ? `-${v}` : `${fnum(a)}${v}`);
+      const side = (a, b) => (a ? term(a) : "") + (b ? (a ? (b > 0 ? ` + ${fnum(b)}` : ` - ${fnum(-b)}`) : fnum(b)) : (a ? "" : "0"));
+      let a = aL, b = bL, c = bR;
+      steps.push(`Start with: ${pretty(m.expr)}`);
+      if (aR) { a = aL - aR; steps.push(`${aR > 0 ? "Subtract" : "Add"} ${term(Math.abs(aR))} ${aR > 0 ? "from" : "to"} both sides: ${side(a, b)} = ${fnum(c)}`); }
+      if (b) { c = c - b; steps.push(`${b > 0 ? "Subtract" : "Add"} ${fnum(Math.abs(b))} ${b > 0 ? "from" : "to"} both sides: ${term(a)} = ${fnum(c)}`); }
+      if (a !== 1) steps.push(`Divide both sides by ${fnum(a)}: ${v} = ${fnum(c)} ÷ ${fnum(a)} = ${fnum(c / a)}`);
+      const x = fnum(c / a), put = (e) => pretty(e).replace(new RegExp(`(\\d)${v}`, "g"), `$1(${x})`).replace(new RegExp(`\\b${v}\\b`, "g"), `(${x})`);
+      const lv = fnum(val(L, { [v]: c / a })), rv = fnum(val(R, { [v]: c / a }));
+      steps.push(`Check: ${put(L)} = ${lv}` + (/[a-z]/i.test(R) ? ` and ${put(R)} = ${rv}` : "") + (lv === rv ? " ✓" : ""));
+    } else {
+      steps.push(`Start with: ${pretty(m.expr)}`, `This isn't a simple straight-line equation, so solve it (for example by factoring or the quadratic formula).`);
+    }
+    return { shown: pretty(m.expr), answer, steps };
   }
-  const val = tidyNum(N(m.expr).evaluate().text("decimals"));
-  return /^-?[\d.]+$/.test(val) ? { shown: m.line.length <= 60 ? m.line : m.expr.replace(/\*/g, "×").replace(/\//g, "÷"), answer: val } : null;
+  const result = tidyNum(N(m.expr).evaluate().text("decimals"));
+  if (!/^-?[\d.]+$/.test(result)) return null;
+  const steps = [];
+  const pct = m.line.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
+  if (pct) steps.push(`${pct[1]}% means ${pct[1]} ÷ 100 = ${fnum(pct[1] / 100)}`, `${fnum(pct[1] / 100)} × ${pct[2]} = ${result}`);
+  else if (/[+\-*/^].*[+\-*/^]/.test(m.expr.replace(/^-/, ""))) steps.push(`Work it out in order: brackets first, then × and ÷, then + and −.`, `${pretty(m.expr)} = ${result}`);
+  else steps.push(`${pretty(m.expr)} = ${result}`);
+  return { shown: m.line.length <= 60 ? m.line : pretty(m.expr), answer: result, steps, simple: steps.length === 1 };
 }
 // Finds every math problem (one per line, up to 6) and solves each exactly.
 async function checkMath(text) {
@@ -530,21 +566,37 @@ async function talk(text) {
   const { row, body } = lumoMsg();
   busy = true; setSendIcon("stop"); window.lumoState.mode = "thinking";
   let reply = "";
-  // exact answer first, so Lumo explains toward the right result
+  // Math the engine can solve exactly gets exact steps; Lumo answers everything else.
   const checked = await checkMath(full);
   if (checked.length) {
-    const card = document.createElement("div"); card.className = "check";
-    const k = document.createElement("span"); k.className = "k"; k.textContent = checked.length > 1 ? "Checked answers" : "Checked answer";
-    card.append(k);
-    for (const c of checked) {
-      const line = document.createElement("div"); line.className = "line";
-      const q = document.createElement("span"); q.className = "q"; q.textContent = c.shown;
-      const a = document.createElement("b"); a.textContent = c.answer;
-      line.append(q, a); card.append(line);
+    if (!(checked.length === 1 && checked[0].simple)) {
+      const card = document.createElement("div"); card.className = "check";
+      const k = document.createElement("span"); k.className = "k"; k.textContent = checked.length > 1 ? "Checked answers" : "Checked answer";
+      card.append(k);
+      for (const c of checked) {
+        const line = document.createElement("div"); line.className = "line";
+        const q = document.createElement("span"); q.className = "q"; q.textContent = c.shown;
+        const a = document.createElement("b"); a.textContent = c.answer;
+        line.append(q, a); card.append(line);
+      }
+      body.parentElement.insertBefore(card, body);
     }
-    body.parentElement.insertBefore(card, body);
-    if (checked.length === 1)
-      convo[convo.length - 1] = { role: "user", content: `${full}\n\nThe correct answer is ${checked[0].answer}. Explain the steps to get it.` };
+    body.replaceChildren();
+    const parts = [];
+    for (const [i, c] of checked.entries()) {
+      if (checked.length > 1) { const h = document.createElement("div"); h.className = "step prob"; h.textContent = `Problem ${i + 1} · ${c.shown}`; body.append(h); }
+      const ol = document.createElement(c.steps.length > 1 ? "ol" : "div"); ol.className = "steps";
+      for (const s of c.steps) { const li = document.createElement(c.steps.length > 1 ? "li" : "div"); li.textContent = s; ol.append(li); }
+      body.append(ol);
+      if (c.steps.length > 1) { const f = document.createElement("div"); f.className = "final"; f.append("Answer: "); const b = document.createElement("b"); b.textContent = c.answer; f.append(b); body.append(f); }
+      parts.push(c.steps.join("\n") + `\nAnswer: ${c.answer}`);
+    }
+    reply = parts.join("\n\n");
+    row.classList.remove("thinking");
+    convo.push({ role: "assistant", content: reply });
+    busy = false; setSendIcon("send"); window.lumoState.mode = "idle";
+    scrollDown();
+    return;
   }
   const ctrl = new AbortController(); stop = ctrl;
   async function speak(text, el, n = 300) {
@@ -566,22 +618,7 @@ async function talk(text) {
     render(el, said, false);
     return said;
   }
-  if (checked.length > 1) {
-    // several problems: Lumo explains each one on its own (he loses track when doing many at once)
-    body.replaceChildren();
-    const parts = [];
-    for (const [i, c] of checked.entries()) {
-      if (ctrl.signal.aborted) break;
-      const h = document.createElement("div"); h.className = "step"; h.textContent = `Problem ${i + 1}`;
-      const el = document.createElement("div");
-      body.append(h, el);
-      const said = await speak(`<|user|>\nProblem: ${c.line}\nThe correct answer is ${c.answer}. Explain the steps to get it.\n<|assistant|>\n`, el, 180);
-      parts.push(`Problem ${i + 1}: ${said}`);
-    }
-    reply = parts.join("\n\n");
-  } else {
-    reply = await speak(prompt(), body);
-  }
+  reply = await speak(prompt(), body);
   if (!reply) body.textContent = "(Lumo didn't say anything. Try asking another way.)";
   row.classList.remove("thinking");
   convo.push({ role: "assistant", content: reply });
