@@ -100,7 +100,8 @@ div.steps{padding-left:0;font-size:17px}
 .final{margin:8px 0 2px;color:var(--mist)}
 .graphwrap{margin:10px 0 4px}.graph{max-width:100%;height:auto;background:#0a0c11;border:1px solid var(--line2);border-radius:12px}
 .graph .g{stroke:rgba(255,236,200,.07);stroke-width:1}.graph .ax{stroke:rgba(255,236,200,.45);stroke-width:1.4}
-.graph .ln{stroke:var(--amber);stroke-width:2.6;stroke-linecap:round}.graph .pt{fill:var(--moon)}
+.graph .ln{stroke:var(--amber);stroke-width:2.6;stroke-linecap:round}.graph .ln2{stroke:var(--moon)}
+.vt{border-collapse:collapse;margin:10px 0 4px;font:14px var(--f-mono);font-variant-numeric:tabular-nums}.vt th,.vt td{border:1px solid var(--line2);padding:5px 14px;text-align:center}.vt th{color:var(--amber);font-weight:500}.graph .pt{fill:var(--moon)}
 .graph .lb{fill:var(--cream);font:11px var(--f-mono)}
 .final b{color:var(--cream);font-family:var(--f-display);font-size:18px}
 .dots{display:inline-flex;gap:5px;padding:8px 0}
@@ -398,6 +399,16 @@ function findMath(raw) {
   const text = normalizeMath(raw);
   // slope between two points: (2, 5) and (6, 13)
   const pts = [...text.matchAll(/\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g)];
+  const P = () => [pts[0], pts[1]].map((m) => [parseFloat(m[1]), parseFloat(m[2])]);
+  if (pts.length >= 2 && /midpoint/i.test(text)) return { kind: "midpoint", p: P(), expr: "mid" + pts[0][0] + pts[1][0], line };
+  if (pts.length >= 2 && /distance|how far/i.test(text)) return { kind: "distance", p: P(), expr: "dist" + pts[0][0] + pts[1][0], line };
+  if (pts.length >= 2 && /equation|line (that )?(goes |passes )?through|write the line/i.test(text) && !/slope of|find the slope/i.test(text)) return { kind: "line2pts", p: P(), expr: "eq" + pts[0][0] + pts[1][0], line };
+  // function values: f(x) = 3x^2 - 2 ... find f(4)
+  const fdef = text.match(/\b([fgh])\s*\(\s*x\s*\)\s*=\s*([0-9x+\-*/^().\s]+?)(?=[,;]|\s+(find|what|evaluate|and)\b|$)/i);
+  if (fdef) {
+    const name = fdef[1], at = [...text.slice(fdef.index + fdef[0].length).matchAll(new RegExp(name + "\\s*\\(\\s*(-?\\d+(?:\\.\\d+)?)\\s*\\)", "gi"))].map((m) => parseFloat(m[1]));
+    if (at.length) return { kind: "fval", name, expr: fdef[2].trim().replace(/\s+/g, "").replace(/(\d)x/g, "$1*x"), at, line };
+  }
   if (/slope/i.test(text) && pts.length >= 2) return { kind: "slope", p: [pts[0], pts[1]].map((m) => [parseFloat(m[1]), parseFloat(m[2])]), expr: pts[0][0] + pts[1][0], line };
   // simplify / expand an expression: 3(2x + 4) - 5x
   if (/simplif|expand|combine like terms|distribute/i.test(text)) {
@@ -412,10 +423,10 @@ function findMath(raw) {
     let eq = m[0].trim().replace(/^[^0-9a-z(\-]+|[^0-9a-z)]+$/gi, "");
     const sides = eq.split("=");
     if (sides.length !== 2 || !sides[0].trim() || !sides[1].trim()) continue;
-    eq = eq.replace(/\b(solve|for|find|what|is|the|value|of|graph|plot|draw|line|equation|slope|intercept|form|and|sketch)\b/gi, " ").replace(/\s+/g, "")
+    eq = eq.replace(/\b[a-z]{2,}\b/gi, " ").replace(/\s+/g, "")   // drop normal words ("complete the table for"); single letters are variables
       .replace(/(\d+)\/(\d+)([a-z])/gi, "($1/$2)*$3");   // "2/3x" means (2/3)x on worksheets
     const vars = [...new Set((eq.match(/[a-z]/gi) || []).map((c) => c.toLowerCase()))];
-    if (vars.slice().sort().join("") === "xy" && /\d/.test(eq)) return { kind: "line", expr: eq, line };   // a line to graph, like y = -5x + 1
+    if (vars.slice().sort().join("") === "xy" && /\d/.test(eq)) return { kind: "line", expr: eq, line, table: /table|chart/i.test(text) };   // a line to graph, like y = -5x + 1
     if (vars.length === 1 && /\d/.test(eq)) return { kind: "equation", expr: eq, v: vars[0], line };
   }
   // 2) plain arithmetic, like 583 + 233 or (12*11) - 4
@@ -431,15 +442,17 @@ const tidyNum = (s) => s.replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
 const pretty = (e) => e.replace(/\*/g, " × ").replace(/\//g, " ÷ ").replace(/([+\-=])/g, " $1 ").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")").replace(/^ - /, "-").trim();
 const fnum = (x) => { const r = Math.round(x * 1e6) / 1e6; return Object.is(r, -0) ? "0" : String(r); };
 // a small coordinate grid (-10..10) with the line and its two key points
-function miniGraph({ m, b, pts }) {
+function miniGraph({ m, b, pts = [], lines, parabola }) {
+  lines = lines || (m != null ? [{ m, b }] : []);
   const NS = "http://www.w3.org/2000/svg", S = 220, u = S / 20, X = (x) => S / 2 + x * u, Y = (y) => S / 2 - y * u;
   const el = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
-  const svg = el("svg", { viewBox: `0 0 ${S} ${S}`, width: S, height: S, class: "graph", role: "img", "aria-label": `Graph of ${lineEq(m, b)}` });
+  const svg = el("svg", { viewBox: `0 0 ${S} ${S}`, width: S, height: S, class: "graph", role: "img", "aria-label": "Graph: " + (lines.map((l) => lineEq(l.m, l.b)).join(" and ") || "parabola") });
   for (let i = -10; i <= 10; i++) {
     svg.append(el("line", { x1: X(i), y1: 0, x2: X(i), y2: S, class: i ? "g" : "ax" }), el("line", { x1: 0, y1: Y(i), x2: S, y2: Y(i), class: i ? "g" : "ax" }));
   }
   const x1 = -10, x2 = 10;
-  svg.append(el("line", { x1: X(x1), y1: Y(m * x1 + b), x2: X(x2), y2: Y(m * x2 + b), class: "ln" }));
+  lines.forEach((l, i) => svg.append(el("line", { x1: X(x1), y1: Y(l.m * x1 + l.b), x2: X(x2), y2: Y(l.m * x2 + l.b), class: i ? "ln ln2" : "ln" })));
+  if (parabola) { const { a, b: pb, c } = parabola; let d = ""; for (let x = -10; x <= 10.001; x += 0.1) { const y = a * x * x + pb * x + c; d += (d ? "L" : "M") + X(x).toFixed(1) + " " + Y(Math.max(-30, Math.min(30, y))).toFixed(1); } svg.append(el("path", { d, class: "ln", fill: "none" })); }
   for (const [px, py] of pts) {
     if (Math.abs(px) > 10 || Math.abs(py) > 10) continue;
     svg.append(el("circle", { cx: X(px), cy: Y(py), r: 4.5, class: "pt" }));
@@ -457,8 +470,100 @@ function lineEq(m, b) {
   const bt = b === 0 ? (m === 0 ? "0" : "") : (mt ? (b > 0 ? ` + ${fracText(b)}` : ` - ${fracText(-b)}`) : fracText(b));
   return `y = ${mt}${bt}`;
 }
+function lineOf(N, expr) {   // any x-y line equation -> { m, b } (null if it isn't a straight line)
+  const sols = N.solveEquations(expr, "y"); if (!sols.length) return null;
+  const f = (xv) => parseFloat(N(sols[0].toString(), { x: xv }).evaluate().text("decimals"));
+  const b = f(0), sl = f(1) - b;
+  return isFinite(b) && isFinite(sl) && Math.abs(f(2) - (b + 2 * sl)) < 1e-6 ? { m: sl, b } : null;
+}
+const ptText = ([x, y]) => `(${fnum(x)}, ${fnum(y)})`;
+function sqrtText(v) {   // 50 -> "5√2", 49 -> "7"
+  if (Math.abs(v - Math.round(v)) > 1e-9) return null;
+  let out = 1, inside = Math.round(v);
+  for (let k = 2; k * k <= inside; k++) while (inside % (k * k) === 0) { inside /= k * k; out *= k; }
+  return inside === 1 ? String(out) : `${out === 1 ? "" : out}√${inside}`;
+}
+// Extra problem types: tables, lines through 2 points, midpoint, distance, f(x), systems.
+async function solveOneMore(m, N) {
+  if (m.kind === "tablefit") {
+    const { xs, ys } = m, n = xs.length, slopes = [];
+    for (let i = 1; i < n; i++) slopes.push((ys[i] - ys[i - 1]) / (xs[i] - xs[i - 1]));
+    const tableBack = { head: ["x", "y"], rows: xs.map((x, i) => [x, ys[i]]) };
+    if (slopes.every((v) => Math.abs(v - slopes[0]) < 1e-9)) {
+      const sl = slopes[0], b = ys[0] - sl * xs[0], dx = xs[1] - xs[0], dy = ys[1] - ys[0];
+      const steps = [
+        `Look at how y changes: every time x goes up by ${fnum(dx)}, y changes by ${dy >= 0 ? "+" : ""}${fnum(dy)}. It's the same every time, so it's a straight line.`,
+        `Slope m = change in y ÷ change in x = ${fnum(dy)} ÷ ${fnum(dx)} = ${fracText(sl)}`,
+        xs.includes(0) ? `The y-intercept b is y when x = 0: b = ${fnum(b)}` : `Find b with one point: ${fnum(ys[0])} = ${fracText(sl)}(${fnum(xs[0])}) + b, so b = ${fnum(b)}`,
+        `Equation: ${lineEq(sl, b)}`];
+      return { shown: "table of values", answer: lineEq(sl, b), steps, table: tableBack, graph: { m: sl, b, pts: xs.map((x, i) => [x, ys[i]]).slice(0, 4) } };
+    }
+    if (n >= 3) {   // the changes change by the same amount -> quadratic
+      const [x0, x1, x2] = xs, [y0, y1, y2] = ys;
+      const a = ((y2 - y1) / (x2 - x1) - (y1 - y0) / (x1 - x0)) / (x2 - x0), bq = (y1 - y0) / (x1 - x0) - a * (x0 + x1), c = y0 - a * x0 * x0 - bq * x0;
+      if (xs.every((x, i) => Math.abs(a * x * x + bq * x + c - ys[i]) < 1e-6)) {
+        let eq = `y = ${a === 1 ? "" : a === -1 ? "-" : fracText(a)}x²`;
+        if (bq) eq += ` ${bq < 0 ? "-" : "+"} ${Math.abs(bq) === 1 ? "" : fracText(Math.abs(bq))}x`;
+        if (c) eq += ` ${c < 0 ? "-" : "+"} ${fracText(Math.abs(c))}`;
+        return { shown: "table of values", answer: eq, table: tableBack, graph: { pts: xs.map((x, i) => [x, ys[i]]).slice(0, 5), parabola: { a, b: bq, c } },
+          steps: [`The changes in y aren't the same each time (${slopes.map(fracText).join(", ")}), so it's not a straight line.`,
+                  `But those changes go up by the same amount each time, so it's a quadratic (a parabola).`, `Fitting y = ax² + bx + c through the points gives: ${eq}`] };
+      }
+    }
+    return { shown: "table of values", answer: "not a straight line", table: tableBack, steps: [`The y-values don't change by the same amount each time (${slopes.map(fracText).join(", ")}), so this table isn't a straight line.`] };
+  }
+  if (m.kind === "line2pts") {
+    const [[x1, y1], [x2, y2]] = m.p;
+    if (x1 === x2) return { shown: m.line, answer: `x = ${fnum(x1)} (vertical line)`, steps: [`Both points have x = ${fnum(x1)}, so the line is vertical: x = ${fnum(x1)}.`] };
+    const sl = (y2 - y1) / (x2 - x1), b = y1 - sl * x1;
+    return { shown: `line through ${ptText([x1, y1])} and ${ptText([x2, y2])}`, answer: lineEq(sl, b), graph: { m: sl, b, pts: [[x1, y1], [x2, y2]] }, steps: [
+      `Slope m = (y2 - y1) ÷ (x2 - x1) = (${fnum(y2)} - ${fnum(y1)}) ÷ (${fnum(x2)} - ${fnum(x1)}) = ${fracText(sl)}`,
+      `Plug one point into y = mx + b: ${fnum(y1)} = ${fracText(sl)}(${fnum(x1)}) + b, so b = ${fnum(b)}`, `Equation: ${lineEq(sl, b)}`] };
+  }
+  if (m.kind === "midpoint") {
+    const [[x1, y1], [x2, y2]] = m.p, mid = [(x1 + x2) / 2, (y1 + y2) / 2];
+    return { shown: `midpoint of ${ptText([x1, y1])} and ${ptText([x2, y2])}`, answer: ptText(mid), steps: [
+      "Midpoint = ((x1 + x2) ÷ 2, (y1 + y2) ÷ 2)", `= ((${fnum(x1)} + ${fnum(x2)}) ÷ 2, (${fnum(y1)} + ${fnum(y2)}) ÷ 2)`, `= ${ptText(mid)}`] };
+  }
+  if (m.kind === "distance") {
+    const [[x1, y1], [x2, y2]] = m.p, dx = x2 - x1, dy = y2 - y1, sq = dx * dx + dy * dy, d = Math.sqrt(sq), ex = sqrtText(sq);
+    const approx = fnum(Math.round(d * 100) / 100);
+    return { shown: `distance from ${ptText([x1, y1])} to ${ptText([x2, y2])}`, answer: ex && ex.includes("√") ? `${ex} ≈ ${approx}` : (ex || approx), steps: [
+      "Distance = √((x2 - x1)² + (y2 - y1)²)", `= √((${fnum(dx)})² + (${fnum(dy)})²) = √(${fnum(dx * dx)} + ${fnum(dy * dy)}) = √${fnum(sq)}`,
+      ex ? `= ${ex}${ex.includes("√") ? ` ≈ ${approx}` : ""}` : `≈ ${approx}`] };
+  }
+  if (m.kind === "fval") {
+    const steps = [], outs = [];
+    for (const a of m.at.slice(0, 4)) {
+      const v = tidyNum(N(m.expr, { x: a }).evaluate().text("decimals"));
+      steps.push(`${m.name}(${fnum(a)}): replace every x with ${fnum(a)} → ${pretty(m.expr.replace(/x/g, `(${fnum(a)})`))} = ${v}`);
+      outs.push(`${m.name}(${fnum(a)}) = ${v}`);
+    }
+    return { shown: `${m.name}(x) = ${pretty(m.expr)}`, answer: outs.join(", "), steps };
+  }
+  if (m.kind === "system") {
+    const [A, B] = m.exprs.map((e) => lineOf(N, e));
+    if (!A || !B) return null;
+    const steps = [`Write both in y = mx + b form: ${lineEq(A.m, A.b)} and ${lineEq(B.m, B.b)}`];
+    if (Math.abs(A.m - B.m) < 1e-12) {
+      const same = Math.abs(A.b - B.b) < 1e-12;
+      steps.push(same ? "They're the same line, so every point on it works." : "Same slope but different y-intercepts: the lines are parallel and never cross.");
+      return { shown: "system of equations", answer: same ? "infinitely many solutions" : "no solution (parallel lines)", steps, graph: { lines: [A, B] } };
+    }
+    const x = (B.b - A.b) / (A.m - B.m), y = A.m * x + A.b;
+    steps.push(`Set them equal (that's where the lines cross): ${lineEq(A.m, A.b).slice(4)} = ${lineEq(B.m, B.b).slice(4)}`,
+               `Solve for x: x = ${fracText(x)}`,
+               `Plug x back in: y = ${fracText(A.m)}(${fracText(x)}) ${A.b < 0 ? "-" : "+"} ${fracText(Math.abs(A.b))} = ${fracText(y)}`,
+               `Check in the other equation: ${fracText(B.m)}(${fracText(x)}) ${B.b < 0 ? "-" : "+"} ${fracText(Math.abs(B.b))} = ${fracText(B.m * x + B.b)} ✓`);
+    return { shown: "system of equations", answer: `x = ${fracText(x)}, y = ${fracText(y)}  →  ${ptText([x, y])}`, steps, graph: { lines: [A, B], pts: [[x, y]] } };
+  }
+  return undefined;
+}
+
 async function solveOne(m) {
   const N = window.nerdamer;
+  const more = await solveOneMore(m, N);
+  if (more !== undefined) return more;
   if (m.kind === "line") {
     const sols = N.solveEquations(m.expr, "y");
     if (!sols.length) return null;
@@ -478,7 +583,9 @@ async function solveOne(m) {
     steps.push(`Slope = rise / run = ${rise}/${run}. From (0, ${fnum(b)}), go ${rise < 0 ? "down" : "up"} ${Math.abs(rise)} and right ${run} to (${fnum(p2[0])}, ${fnum(p2[1])}). Plot it.`);
     steps.push(`Draw a straight line through (0, ${fnum(b)}) and (${fnum(p2[0])}, ${fnum(p2[1])}), extending it across the grid.`);
     steps.push(`Check: x = ${fnum(p2[0])} gives y = ${fracText(sl)}(${fnum(p2[0])}) ${b < 0 ? "-" : "+"} ${fnum(Math.abs(b))} = ${fnum(sl * p2[0] + b)} ✓`);
-    return { shown: eq, answer: `line through (0, ${fnum(b)}) and (${fnum(p2[0])}, ${fnum(p2[1])})`, steps, graph: { m: sl, b, pts: [[0, b], p2] } };
+    const table = m.table ? { head: ["x", "y"], rows: [-2, -1, 0, 1, 2].map((x) => [x, sl * x + b]) } : null;
+    if (table) steps.unshift(`Make a table: pick x-values, plug each one into ${eq}, and work out y.`);
+    return { shown: eq, answer: table ? `${eq} (table below)` : `line through (0, ${fnum(b)}) and (${fnum(p2[0])}, ${fnum(p2[1])})`, steps, table, graph: { m: sl, b, pts: [[0, b], p2] } };
   }
   if (m.kind === "slope") {
     const [[x1, y1], [x2, y2]] = m.p;
@@ -497,9 +604,9 @@ async function solveOne(m) {
   const val = (e, subs) => parseFloat(N(String(e), subs || {}).evaluate().text("decimals"));
   if (m.kind === "equation") {
     const v = m.v, [L, R] = m.expr.split("=");
-    const sol = N.solveEquations(m.expr, v).map((s) => tidyNum(N(s.toString()).evaluate().text("decimals")));
+    const sol = N.solveEquations(m.expr, v).map((s) => { const t = tidyNum(N(s.toString()).evaluate().text("decimals")); return /\.\d{4,}/.test(t) ? "≈ " + fnum(Math.round(parseFloat(t) * 1000) / 1000) : t; });
     if (!sol.length) return null;
-    const answer = `${v} = ${sol.join(" or ")}`, steps = [];
+    const answer = sol.map((t) => `${v} ${t.startsWith("≈") ? t : "= " + t}`).join(" or "), steps = [];
     const linear = (e) => { try { return N.diff(N.diff(e, v), v).evaluate().text() === "0"; } catch { return false; } };
     if (linear(L) && linear(R)) {
       const aL = val(N.diff(L, v)), bL = val(L, { [v]: 0 }), aR = val(N.diff(R, v)), bR = val(R, { [v]: 0 });
@@ -514,7 +621,20 @@ async function solveOne(m) {
       const lv = fnum(val(L, { [v]: c / a })), rv = fnum(val(R, { [v]: c / a }));
       steps.push(`Check: ${put(L)} = ${lv}` + (/[a-z]/i.test(R) ? ` and ${put(R)} = ${rv}` : "") + (lv === rv ? " ✓" : ""));
     } else {
-      steps.push(`Start with: ${pretty(m.expr)}`, `This isn't a simple straight-line equation, so solve it (for example by factoring or the quadratic formula).`);
+      const F = (x) => val(`(${L})-(${R})`, { [v]: x });
+      const c0 = F(0), a2 = (F(1) + F(-1)) / 2 - c0, b2 = (F(1) - F(-1)) / 2;
+      if (Math.abs(F(2) - (4 * a2 + 2 * b2 + c0)) < 1e-6 && Math.abs(a2) > 1e-12) {
+        const disc = b2 * b2 - 4 * a2 * c0, std = `${fracText(a2)}${v}² ${b2 < 0 ? "-" : "+"} ${fracText(Math.abs(b2))}${v} ${c0 < 0 ? "-" : "+"} ${fracText(Math.abs(c0))} = 0`;
+        steps.push(`It has ${v}², so it's a quadratic. Standard form: ${std}  (a = ${fracText(a2)}, b = ${fracText(b2)}, c = ${fracText(c0)})`);
+        const r1 = (-b2 + Math.sqrt(Math.max(0, disc))) / (2 * a2), r2 = (-b2 - Math.sqrt(Math.max(0, disc))) / (2 * a2);
+        if (disc >= 0 && Math.abs(a2 - 1) < 1e-12 && [r1, r2].every((r) => Math.abs(r - Math.round(r)) < 1e-9)) {
+          const f1 = (r) => (r === 0 ? v : `(${v} ${r > 0 ? "-" : "+"} ${fnum(Math.abs(r))})`);
+          steps.push(`Factor: find two numbers that multiply to ${fnum(c0)} and add to ${fnum(b2)}: ${fnum(-r1)} and ${fnum(-r2)}`, `${f1(r1)}${f1(r2)} = 0, so ${v} = ${fnum(r1)} or ${v} = ${fnum(r2)}`);
+        } else {
+          steps.push(`Use the quadratic formula: ${v} = (-b ± √(b² - 4ac)) ÷ 2a`, `b² - 4ac = ${fnum(b2 * b2)} - ${fnum(4 * a2 * c0)} = ${fnum(disc)}`);
+          steps.push(disc < 0 ? "That's negative, so there are no real solutions." : `${v} = (${fnum(-b2)} ± √${fnum(disc)}) ÷ ${fnum(2 * a2)} → ${v} ≈ ${fnum(Math.round(r1 * 1000) / 1000)} or ${v} ≈ ${fnum(Math.round(r2 * 1000) / 1000)}`);
+        }
+      } else steps.push(`Start with: ${pretty(m.expr)}`, `This isn't a straight-line or quadratic equation, so it's solved directly.`);
     }
     return { shown: pretty(m.expr), answer, steps };
   }
@@ -533,10 +653,43 @@ async function solveOne(m) {
   return { shown: m.line.length <= 60 ? m.line : pretty(m.expr), answer: result, steps, simple: steps.length === 1 };
 }
 // Finds every math problem (one per line, up to 6) and solves each exactly.
+// A table of x and y values, typed or read from a photo:  "x | 0 1 2 3" + "y | 1 3 5 7", or rows like "0  1" / "1  3".
+function findTable(text) {
+  const nums = (s) => (s.replace(/[“”"'‘’~—–_]\s*(?=\d)/g, "-").match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  let L = text.split(/\n+/).map((l) => l.trim().replace(/^[xX]{2}\b/, "x")).filter(Boolean);
+  const xi = L.findIndex((l) => /^x$/i.test(l)), yi = L.findIndex((l, i) => i > xi && /^y$/i.test(l));   // sparse: "x" / "-2" / "0" ... "y" / "7" ...
+  if (xi >= 0 && yi > xi) {
+    const col = (from) => { const a = []; for (const l of L.slice(from)) { if (/^[“”"'‘’~—–_-]?\d+(\.\d+)?$/.test(l)) a.push(l); else break; } return a; };
+    const xa = col(xi + 1), ya = col(yi + 1);
+    if (xa.length >= 2 && xa.length === ya.length) L = [...L.slice(0, xi), "x " + xa.join(" "), "y " + ya.join(" "), ...L.slice(yi + 1 + ya.length)];
+  }
+  const xr = L.find((l) => /^x\s*[:|=]?\s*\|?\s*-?\d/i.test(l) && nums(l).length >= 2);
+  const yr = L.find((l) => /^(y|f\s*\(\s*x\s*\))\s*[:|=]?\s*\|?\s*-?\d/i.test(l) && nums(l.replace(/^f\s*\(\s*x\s*\)/i, "")).length >= 2);
+  if (xr && yr) { const xs = nums(xr), ys = nums(yr.replace(/^f\s*\(\s*x\s*\)/i, "")); if (xs.length === ys.length && xs.length >= 2) return { xs, ys }; }
+  const head = L.findIndex((l) => /^\|?\s*x\s*\|?\s*(y|f\s*\(\s*x\s*\))\s*\|?\s*$/i.test(l));
+  if (head >= 0) {
+    const rows = []; for (const l of L.slice(head + 1)) { const n = nums(l); if (n.length === 2) rows.push(n); else if (rows.length) break; }
+    if (rows.length >= 2) return { xs: rows.map((r) => r[0]), ys: rows.map((r) => r[1]) };
+  }
+  return null;
+}
 async function checkMath(text) {
-  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  // "y = 2x + 1 and y = -x + 7" on one line -> two equations (keep the words in front for context)
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean).flatMap((l) => {
+    if ((l.match(/=/g) || []).length < 2 || /\(\s*-?\d/.test(l)) return [l];
+    const parts = l.split(/\s+and\s+|\s*[;,]\s*/i), eqs = parts.filter((p) => p.includes("="));
+    return eqs.length >= 2 ? parts.map((p, i) => (i === 0 || !p.includes("=") ? p : (parts[0].includes(":") ? parts[0].split(":")[0] + ": " : "") + p)) : [l];
+  });
   const found = [];
-  for (const l of lines.length > 1 ? lines : [text]) { const m = findMath(l); if (m && !found.some((f) => f.expr === m.expr)) found.push(m); }
+  const tbl = findTable(text);
+  if (tbl) found.push({ kind: "tablefit", ...tbl, expr: "table" + tbl.xs + "|" + tbl.ys, line: "the table" });
+  for (const l of lines.length > 1 ? lines : [text]) { if (tbl && /^(x|y|f\s*\(\s*x\s*\))\b|^[\s\d.|-]+$/i.test(l)) continue; const m = findMath(l); if (m && !found.some((f) => f.expr === m.expr)) found.push(m); }
+  // two line equations + "system / solve / intersect" -> solve them together
+  const lineEqs = found.filter((f) => f.kind === "line");
+  if (lineEqs.length === 2 && /system|solve|intersect|both|substitution|elimination/i.test(text)) {
+    for (const f of lineEqs) found.splice(found.indexOf(f), 1);
+    found.unshift({ kind: "system", exprs: lineEqs.map((f) => f.expr), expr: "sys" + lineEqs.map((f) => f.expr).join(";"), line: lineEqs.map((f) => f.line).join(" and ") });
+  }
   if (!found.length) return [];
   try { await loadMath(); } catch { return []; }
   const out = [];
@@ -628,7 +781,7 @@ async function shrinkImage(file, max = 1600) {
 // grayscale -> (flip dark-mode screens to dark-on-light) -> soften screen pixel patterns ->
 // divide by the blurred background (removes shadows/glare) -> stretch contrast.
 // invert: true / false, or "auto" (decide from the middle of the photo)
-async function cleanPhoto(file, invert = "auto") {
+async function cleanPhoto(file, invert = "auto", grid = false) {
   const bmp = await createImageBitmap(file);
   const s = Math.min(window.lumoScaleMax || 1.6, (window.lumoTarget || 2200) / Math.max(bmp.width, bmp.height)); // small text reads better a bit bigger
   const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
@@ -674,14 +827,23 @@ async function cleanPhoto(file, invert = "auto") {
   pass(g, t1, w, 1, h, w, "max"); pass(t1, t2, h, w, w, 1, "max");     // max filter 9x9
   pass(t2, t1, w, 1, h, w, "box"); pass(t1, t2, h, w, w, 1, "box");     // big blur
   const out = t1;
-  for (let i = 0; i < n; i++) out[i] = Math.min(255, (g[i] / Math.max(1, t2[i])) * 255);
+  // areas whose "paper" is dark (desk, laptop bezel, room) aren't paper at all: blank them so they can't turn into speckles
+  for (let i = 0; i < n; i++) out[i] = t2[i] < 75 ? 255 : Math.min(255, (g[i] / Math.max(1, t2[i])) * 255);
   // contrast stretch between the 1st and 99th percentile
   const hist = new Uint32Array(256); for (let i = 0; i < n; i++) hist[out[i] | 0]++;
   let lo = 0, hi = 255, acc = 0;
   for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.01) { lo = v; break; } }
   acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.01) { hi = v; break; } }
   const span = Math.max(1, hi - lo);
-  for (let i = 0; i < n; i++) { const v = Math.max(0, Math.min(255, ((out[i] - lo) / span) * 255)); px[4 * i] = px[4 * i + 1] = px[4 * i + 2] = v; px[4 * i + 3] = 255; }
+  const fin = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i++) fin[i] = Math.max(0, Math.min(255, ((out[i] - lo) / span) * 255));
+  // erase table/grid lines: long straight dark runs (letters and digits are short), so tables read as rows of numbers
+  if (grid) {
+  const dark = (v) => v < 226, minH = Math.max(40, Math.round(w / 14)), minV = Math.max(30, Math.round(h / 24));
+  for (let y = 0; y < h; y++) { let run = 0; for (let x = 0; x <= w; x++) { const d = x < w && dark(fin[y * w + x]); if (d) run++; else { if (run >= minH) for (let k = x - run; k < x; k++) { fin[y * w + k] = 255; if (y > 0) fin[(y - 1) * w + k] = Math.max(fin[(y - 1) * w + k], 200); if (y < h - 1) fin[(y + 1) * w + k] = Math.max(fin[(y + 1) * w + k], 200); } run = 0; } } }
+  for (let x = 0; x < w; x++) { let run = 0; for (let y = 0; y <= h; y++) { const d = y < h && dark(fin[y * w + x]); if (d) run++; else { if (run >= minV) for (let k = y - run; k < y; k++) { fin[k * w + x] = 255; if (x > 0) fin[k * w + x - 1] = Math.max(fin[k * w + x - 1], 200); if (x < w - 1) fin[k * w + x + 1] = Math.max(fin[k * w + x + 1], 200); } run = 0; } } }
+  }
+  for (let i = 0; i < n; i++) { px[4 * i] = px[4 * i + 1] = px[4 * i + 2] = fin[i]; px[4 * i + 3] = 255; }
   ctx.putImageData(img, 0, 0);
   return c;
 }
@@ -692,10 +854,23 @@ async function readPictureOCR(file, onStatus) {
     ocrWorker = await window.Tesseract.createWorker("eng", 1, { logger: (m) => { if (m.status === "recognizing text") onStatus(`Reading the picture · ${Math.round(m.progress * 100)}%`); } });
   }
   // Read it a few ways and keep the best: lots of text read with high confidence wins.
-  const score = (d) => d.text.replace(/\s/g, "").length * (d.confidence / 100) ** 2; // more text wins unless it is much less sure
+  // Score a reading: real words, numbers and math count for it; junk letter-clumps (from shadows/noise) count against it.
+  const SHORT = new Set(["a", "an", "is", "of", "to", "in", "on", "at", "by", "or", "if", "it", "be", "as", "x", "y", "no", "we", "do", "so", "up", "m", "b"]);
+  const score = (d) => {
+    let good = 0, bad = 0;
+    for (const raw of d.text.split(/\s+/)) {
+      const t = raw.replace(/^[("'\[|]+|[)"'\].,:;?!|]+$/g, "");
+      if (!t) continue;
+      const ok = /^-?\d+([.,/]\d+)*%?$/.test(t) || /^[-+=<>*/^×÷()]$/.test(t) || /[0-9][a-z(]|[a-z][=+\-*/^]|[=+\-*/^][0-9a-z]/i.test(t)
+        || SHORT.has(t.toLowerCase()) || (/^[A-Za-z][a-z]{2,}$/.test(t) && /[aeiouy]/i.test(t)) || /^[A-Z][a-z]+-?[A-Za-z]*$/.test(t);
+      if (ok) good += t.length; else bad += t.length;
+    }
+    return (good - 1.5 * bad) * (d.confidence / 100) ** 2;
+  };
   const tryRead = async (img, psm) => { await ocrWorker.setParameters({ tessedit_pageseg_mode: psm }); return (await ocrWorker.recognize(img)).data; };
   let data = null;
-  const keep = (d) => { if (!data || score(d) > score(data)) data = d; };
+  const keep = (d) => { (window.lumoPasses = window.lumoPasses || []).push({ score: Math.round(score(d)), conf: Math.round(d.confidence), text: d.text.slice(0, 160) }); if (!data || score(d) > score(data)) data = d; };
+  window.lumoPasses = [];
   if (window.lumoNoClean) keep(await tryRead(file, "3"));
   else {
     onStatus("Cleaning up the photo…");
@@ -708,6 +883,14 @@ async function readPictureOCR(file, onStatus) {
       try { flipped = await cleanPhoto(file, !(auto && auto.inverted)); } catch {}
       if (flipped) keep(await tryRead(flipped, "3"));
       keep(await tryRead(auto || file, "6"));
+    }
+    // The question talks about a table but no rows came through? Page-mode reading skips grids, so read it as rows of text.
+    if (/table|chart|values/i.test(data.text) && !findTable(data.text)) {
+      onStatus("Reading the table…"); let gridImg = null;
+      for (const psm of ["6", "4", "11"]) {
+        const d = await tryRead(gridImg || (gridImg = await cleanPhoto(file, !!(auto && auto.inverted), true).catch(() => auto || file)), psm);
+        if (findTable(d.text)) { const t = d.text.split("\n").filter((l) => !data.text.includes(l.trim()) || !l.trim()).join("\n"); data = { ...data, text: data.text.trim() + "\n" + t }; break; }
+      }
     }
   }
   const text = data.text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim()
@@ -722,7 +905,8 @@ async function readPictureOCR(file, onStatus) {
 function fixMathOCR(text) {
   const lines = text.split("\n");
   return lines.map((l, i) => {
-    let t = l.replace(/([a-z0-9)\]])\s*==\s*(?=[\d.(a-z])/gi, "$1 = -");
+    let t = l.replace(/([a-z0-9)\]])\s*==\s*(?=[\d.(a-z])/gi, "$1 = -")
+      .replace(/\bs[il1]ope\b/gi, "slope").replace(/\bequat[il1]on\b/gi, "equation").replace(/\bm[il1]dpo[il1]nt\b/gi, "midpoint");   // common l/i mix-ups
     const ctx = (lines[i - 1] || "") + " " + (lines[i - 2] || "") + " " + l;
     if (/^\s*==?\s*-?\s*\d*\.?\d*\s*x/i.test(t) && /graph|line|slope|equation|y\s*=/i.test(ctx))
       t = t.replace(/^\s*==\s*/, "y = -").replace(/^\s*=\s*/, "y = ");
@@ -813,6 +997,7 @@ async function addFile(file) {
   } catch (e) { a.status = "⚠ " + (e && e.message ? e.message : "Couldn't read this file"); }
   drawAttachments();
 }
+window.__dbg = { findTable, checkMath, findMath, cleanPhoto, shrinkImage };
 // test hook: read a picture by URL the same way the camera button does (used to check reading quality)
 window.lumoTestRead = async (url) => { const f = await shrinkImage(new File([await (await fetch(url)).blob()], "t.jpg", { type: "image/jpeg" })); const text = await readPicture(f, () => {}); return { text, ...(window.lumoLastRead || {}) }; };
 $("#attachBtn").onclick = () => $("#fileIn").click();
@@ -863,6 +1048,12 @@ async function talk(text) {
       const ol = document.createElement(c.steps.length > 1 ? "ol" : "div"); ol.className = "steps";
       for (const s of c.steps) { const li = document.createElement(c.steps.length > 1 ? "li" : "div"); li.textContent = s; ol.append(li); }
       body.append(ol);
+      if (c.table) {
+        const t = document.createElement("table"); t.className = "vt";
+        const hr = document.createElement("tr"); for (const h of c.table.head) { const th = document.createElement("th"); th.textContent = h; hr.append(th); } t.append(hr);
+        for (const r of c.table.rows) { const tr = document.createElement("tr"); for (const v of r) { const td = document.createElement("td"); td.textContent = fracText(v); tr.append(td); } t.append(tr); }
+        body.append(t);
+      }
       if (c.graph) body.append(miniGraph(c.graph));
       if (c.steps.length > 1) { const f = document.createElement("div"); f.className = "final"; f.append("Answer: "); const b = document.createElement("b"); b.textContent = c.answer; f.append(b); body.append(f); }
       parts.push(c.steps.join("\n") + `\nAnswer: ${c.answer}`);
