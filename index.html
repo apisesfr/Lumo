@@ -278,11 +278,11 @@ import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/in
 
 const VERSION = "Pro";
 // Lumo Pro = Qwen3-0.6B fine-tuned on Lumo's personality + school data. Split into <100 MB pieces for GitHub.
-// v2 adds 22 high school classes + ~9,400 checked math problems. Phones get 4-bit (341 MB), computers 5-bit (397 MB).
+// v2 adds 22 high school classes + ~9,400 checked math problems; v3 adds a 668-question biology course built on the site notes. Phones get 4-bit (341 MB), computers 5-bit (397 MB).
 const PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const [QNAME, QPARTS] = PHONE ? ["q4", 4] : ["q5", 5];
 const MODEL_URLS = Array.from({ length: QPARTS }, (_, i) =>
-  new URL(`lumo-pro-v2-${QNAME}-${String(i + 1).padStart(5, "0")}-of-${String(QPARTS).padStart(5, "0")}.gguf`, location.href).href);
+  new URL(`lumo-pro-v3-${QNAME}-${String(i + 1).padStart(5, "0")}-of-${String(QPARTS).padStart(5, "0")}.gguf`, location.href).href);
 const STOP = [151645, 151643]; // <|im_end|>, <|endoftext|>
 const CDN = "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/";
 const $ = (s) => document.querySelector(s);
