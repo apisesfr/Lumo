@@ -121,6 +121,14 @@ div.steps{padding-left:0;font-size:17px}
 .att .x:hover{background:rgba(255,255,255,.06);color:var(--cream)}
 .att .x svg{width:14px;height:14px}
 .attwrap{display:flex;flex-direction:column;gap:6px;width:100%}
+.cropper{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:var(--ink);padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
+.crop-top{text-align:center;color:var(--mist);font-size:14px;margin-bottom:10px}
+.crop-stage{position:relative;flex:1 1 0;min-height:0;min-width:0;width:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;cursor:crosshair}
+.crop-stage img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;min-width:0;min-height:0;border-radius:8px;pointer-events:none}
+.crop-box{position:absolute;border:2px solid var(--amber);border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none}
+.crop-actions{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.crop-actions button{padding:11px 18px;border-radius:14px;border:1px solid var(--line2);color:var(--cream);font-size:15px}
+.crop-actions .crop-go{background:radial-gradient(circle at 35% 30%,#fff3d6,var(--amber) 45%,var(--ember));color:#1b1206;border:0;font-weight:700}
 .readbox label{display:block;font-size:12px;color:var(--mist)}
 .readbox textarea{display:block;width:100%;margin-top:4px;max-height:9rem;padding:8px 10px;border-radius:12px;border:1px solid var(--line2);background:var(--ink2);color:var(--cream);font:14px/1.45 var(--f-mono);resize:vertical}
 .readbox textarea:focus{border-color:rgba(255,189,89,.45);outline:none}
@@ -384,6 +392,14 @@ function findMath(raw) {
   raw = raw.replace(/^\s*(?:\(?\d{1,2}[).:]|[a-h][).])\s+/i, ""); // drop worksheet numbering like "1)" or "b."
   const line = raw.trim();
   const text = normalizeMath(raw);
+  // slope between two points: (2, 5) and (6, 13)
+  const pts = [...text.matchAll(/\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g)];
+  if (/slope/i.test(text) && pts.length >= 2) return { kind: "slope", p: [pts[0], pts[1]].map((m) => [parseFloat(m[1]), parseFloat(m[2])]), expr: pts[0][0] + pts[1][0], line };
+  // simplify / expand an expression: 3(2x + 4) - 5x
+  if (/simplif|expand|combine like terms|distribute/i.test(text)) {
+    const ex = (text.split(/:\s*/).pop() || "").replace(/^[^0-9a-z(\-]+|[^0-9a-z)]+$/gi, "").trim();
+    if (/[a-z]/i.test(ex) && /[0-9]/.test(ex) && /^[0-9a-z+\-*/^().\s]+$/i.test(ex)) return { kind: "simplify", expr: ex.replace(/\s+/g, ""), line };
+  }
   // 0) checking someone's work, like "27 + 45 = 68" (numbers only, an answer after the =)
   const chk = text.replace(/[`*_]/g, "").match(/([\d.()\s]*\d[\d.()\s]*(?:[+\-*/^][\d.()\s]*\d[\d.()\s]*)+)=\s*(-?[\d,]*\.?\d+)\s*[?.!]?\s*$/);
   if (chk && !/[a-z]/i.test(chk[1])) return { kind: "verify", expr: chk[1].replace(/\s+/g, ""), claimed: chk[2].replace(/,/g, ""), line };
@@ -410,6 +426,20 @@ const pretty = (e) => e.replace(/\*/g, " × ").replace(/\//g, " ÷ ").replace(/(
 const fnum = (x) => { const r = Math.round(x * 1e6) / 1e6; return Object.is(r, -0) ? "0" : String(r); };
 async function solveOne(m) {
   const N = window.nerdamer;
+  if (m.kind === "slope") {
+    const [[x1, y1], [x2, y2]] = m.p;
+    if (x2 === x1) return { shown: m.line, answer: "undefined (vertical line)", steps: [`The x-values are the same (${x1}), so the line is vertical and the slope is undefined.`] };
+    const sl = (y2 - y1) / (x2 - x1);
+    return { shown: `slope of (${x1}, ${y1}) and (${x2}, ${y2})`, answer: `m = ${fnum(sl)}`, steps: [
+      "Slope = (y2 - y1) / (x2 - x1)", `= (${y2} - ${y1}) / (${x2} - ${x1})`, `= ${fnum(y2 - y1)} / ${fnum(x2 - x1)} = ${fnum(sl)}`] };
+  }
+  if (m.kind === "simplify") {
+    let out = N(m.expr).expand().toString().replace(/\*/g, "");
+    const lead = out.match(/^(-?\d+(?:\.\d+)?)([+-])(.+)$/);   // "12+x" -> "x+12": letters first, like a textbook
+    if (lead && /[a-z]/i.test(lead[3])) out = `${lead[3]}${lead[1].startsWith("-") ? "-" + lead[1].slice(1) : "+" + lead[1]}`;
+    return { shown: pretty(m.expr), answer: pretty(out), steps: [
+      `Start with: ${pretty(m.expr)}`, "Distribute (multiply into the parentheses), then combine like terms.", `= ${pretty(out)}`] };
+  }
   const val = (e, subs) => parseFloat(N(String(e), subs || {}).evaluate().text("decimals"));
   if (m.kind === "equation") {
     const v = m.v, [L, R] = m.expr.split("=");
@@ -511,17 +541,20 @@ function looksReal(s) {
 // Phones run out of memory with Lumo + the 180 MB vision model loaded together, and the browser reloads the page.
 // So phones (and low-memory devices) use the light text reader; big computers use the vision model.
 const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-const lowMemory = (navigator.deviceMemory || 8) <= 4;
+const lowMemory = (navigator.deviceMemory || 8) <= 4 || /CrOS/.test(navigator.userAgent); // Chromebooks: usually 4 GB
 const useEyes = !isPhone && !lowMemory;
+// The text reader (with photo cleanup) is the most accurate for worksheets and screens, so it goes first.
+// The vision model is only a backup on bigger computers when the text reader finds little.
 async function readPicture(file, onStatus) {
-  if (useEyes) {
+  const text = await readPictureOCR(file, onStatus);
+  const conf = (window.lumoLastRead || {}).confidence || 0;
+  if (useEyes && (conf < 60 || text.replace(/\s/g, "").length < 15)) {
     try {
       const seen = await lookAtPicture(file, onStatus);
-      if (looksReal(seen)) return seen;
-      console.warn("Vision output looked garbled, using basic text reader instead");
-    } catch (e) { console.warn("Vision model unavailable, using basic text reader:", e); }
+      if (looksReal(seen) && seen.length > text.length) return seen;
+    } catch (e) { console.warn("Vision model unavailable:", e); }
   }
-  return readPictureOCR(file, onStatus);
+  return text;
 }
 // Camera photos are huge (12+ megapixels = ~50 MB in memory). Shrink to 1600px first: plenty for reading text.
 async function shrinkImage(file, max = 1600) {
@@ -538,10 +571,12 @@ async function shrinkImage(file, max = 1600) {
   } catch { return file; }
 }
 // Real photos have shadows and uneven light. Clean them up like a document scanner before reading:
-// grayscale -> divide by the blurred background (removes shadows/lighting) -> stretch contrast.
-async function cleanPhoto(file) {
+// grayscale -> (flip dark-mode screens to dark-on-light) -> soften screen pixel patterns ->
+// divide by the blurred background (removes shadows/glare) -> stretch contrast.
+// invert: true / false, or "auto" (decide from the middle of the photo)
+async function cleanPhoto(file, invert = "auto") {
   const bmp = await createImageBitmap(file);
-  const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+  const s = Math.min(window.lumoScaleMax || 1.6, (window.lumoTarget || 2200) / Math.max(bmp.width, bmp.height)); // small text reads better a bit bigger
   const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   const ctx = c.getContext("2d", { willReadFrequently: true });
@@ -549,6 +584,19 @@ async function cleanPhoto(file) {
   const img = ctx.getImageData(0, 0, w, h), px = img.data, n = w * h;
   const g = new Float32Array(n);
   for (let i = 0; i < n; i++) g[i] = 0.299 * px[4 * i] + 0.587 * px[4 * i + 1] + 0.114 * px[4 * i + 2];
+  if (invert === "auto") {   // dark mode? look at the middle 60% of the photo, where the text usually is
+    const hist0 = new Uint32Array(256); let cnt0 = 0;
+    for (let y = Math.floor(h * 0.2); y < h * 0.8; y += 2) for (let x = Math.floor(w * 0.2); x < w * 0.8; x += 2) { hist0[g[y * w + x] | 0]++; cnt0++; }
+    let acc0 = 0, med = 128; for (let v = 0; v < 256; v++) { acc0 += hist0[v]; if (acc0 >= cnt0 / 2) { med = v; break; } }
+    invert = med < 105;
+  }
+  if (invert) for (let i = 0; i < n; i++) g[i] = 255 - g[i];
+  c.inverted = !!invert;
+  if (window.lumoBlur) { // optional 3x3 blur (off: testing showed it smears "=" and thin letters on screen photos)
+    const t = new Float32Array(n);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0, k = 0; for (let dy = -1; dy <= 1; dy++) { const yy = y + dy; if (yy < 0 || yy >= h) continue; for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx < 0 || xx >= w) continue; a += g[yy * w + xx]; k++; } } t[y * w + x] = a / k; }
+    g.set(t);
+  }
   // background = brightest nearby paper: max-filter (removes the dark text), then a big box blur
   const r = Math.max(8, Math.round(Math.max(w, h) / 60));
   const pass = (src, dst, len, stride, count, step, op) => {
@@ -589,17 +637,24 @@ async function readPictureOCR(file, onStatus) {
     await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
     ocrWorker = await window.Tesseract.createWorker("eng", 1, { logger: (m) => { if (m.status === "recognizing text") onStatus(`Reading the picture · ${Math.round(m.progress * 100)}%`); } });
   }
-  onStatus("Cleaning up the photo…");
-  let src = file;
-  if (!window.lumoNoClean) { try { src = await cleanPhoto(file); } catch (e) { console.warn("photo cleanup skipped:", e); } }
-  onStatus("Reading the picture…");
-  await ocrWorker.setParameters({ tessedit_pageseg_mode: "3" });
-  let { data } = await ocrWorker.recognize(src);
-  if (data.confidence < 75) {   // not sure? read it again as one block of text and keep the better one
-    onStatus("Reading it again more carefully…");
-    await ocrWorker.setParameters({ tessedit_pageseg_mode: "6" });
-    const second = (await ocrWorker.recognize(src)).data;
-    if (second.confidence > data.confidence) data = second;
+  // Read it a few ways and keep the best: lots of text read with high confidence wins.
+  const score = (d) => d.text.replace(/\s/g, "").length * (d.confidence / 100) ** 2; // more text wins unless it is much less sure
+  const tryRead = async (img, psm) => { await ocrWorker.setParameters({ tessedit_pageseg_mode: psm }); return (await ocrWorker.recognize(img)).data; };
+  let data = null;
+  const keep = (d) => { if (!data || score(d) > score(data)) data = d; };
+  if (window.lumoNoClean) keep(await tryRead(file, "3"));
+  else {
+    onStatus("Cleaning up the photo…");
+    let auto = null, flipped = null;
+    try { auto = await cleanPhoto(file, "auto"); } catch (e) { console.warn("photo cleanup skipped:", e); }
+    onStatus("Reading the picture…");
+    keep(await tryRead(auto || file, "3"));
+    if (data.confidence < 85 || data.text.trim().length < 40) {   // not sure? try light/dark flipped and as one block of text
+      onStatus("Reading it again more carefully…");
+      try { flipped = await cleanPhoto(file, !(auto && auto.inverted)); } catch {}
+      if (flipped) keep(await tryRead(flipped, "3"));
+      keep(await tryRead(auto || file, "6"));
+    }
   }
   const text = data.text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim()
     // a question mark right after a number often gets read as "7" ("of 120?" -> "of 1207")
@@ -633,6 +688,43 @@ function drawAttachments() {
     } else box.append(el);
   }
 }
+// Crop: drag a box around just the problem. Less background = better reading, and faster.
+function cropPhoto(file) {
+  return new Promise((done) => {
+    const url = URL.createObjectURL(file);
+    const wrap = document.createElement("div"); wrap.className = "cropper"; wrap.setAttribute("role", "dialog"); wrap.setAttribute("aria-label", "Crop the photo");
+    wrap.innerHTML = `<div class="crop-top">Drag a box around the problem</div><div class="crop-stage"><img alt="Your photo"><div class="crop-box"></div></div>
+      <div class="crop-actions"><button type="button" class="crop-all">Use whole photo</button><button type="button" class="crop-go">Read this part</button></div>`;
+    document.body.append(wrap);
+    const img = wrap.querySelector("img"), box = wrap.querySelector(".crop-box"), stage = wrap.querySelector(".crop-stage");
+    let sel = null, start = null;
+    const rectOf = () => img.getBoundingClientRect();
+    const draw = () => { if (!sel) { box.hidden = true; return; } const r = rectOf(), sr = stage.getBoundingClientRect(); box.hidden = false;
+      Object.assign(box.style, { left: (r.left - sr.left + sel.x * r.width) + "px", top: (r.top - sr.top + sel.y * r.height) + "px", width: sel.w * r.width + "px", height: sel.h * r.height + "px" }); };
+    const pos = (e) => { const r = rectOf(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+    img.onload = () => { sel = { x: 0.04, y: 0.04, w: 0.92, h: 0.92 }; draw(); };
+    img.src = url;
+    stage.addEventListener("pointerdown", (e) => { e.preventDefault(); stage.setPointerCapture(e.pointerId); start = pos(e); sel = { x: start.x, y: start.y, w: 0, h: 0 }; draw(); });
+    stage.addEventListener("pointermove", (e) => { if (!start) return; const p = pos(e); sel = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) }; draw(); });
+    stage.addEventListener("pointerup", () => { start = null; if (sel && (sel.w < 0.03 || sel.h < 0.03)) sel = { x: 0.04, y: 0.04, w: 0.92, h: 0.92 }; draw(); });
+    addEventListener("resize", draw);
+    const finish = async (useSel) => {
+      removeEventListener("resize", draw);
+      let out = file;
+      if (useSel && sel && (sel.w < 0.97 || sel.h < 0.97)) {
+        const W = img.naturalWidth, H = img.naturalHeight, c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(sel.w * W)); c.height = Math.max(1, Math.round(sel.h * H));
+        c.getContext("2d").drawImage(img, sel.x * W, sel.y * H, c.width, c.height, 0, 0, c.width, c.height);
+        const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.92));
+        if (blob) out = new File([blob], file.name, { type: "image/jpeg" });
+      }
+      URL.revokeObjectURL(url); wrap.remove(); done(out);
+    };
+    wrap.querySelector(".crop-all").onclick = () => finish(false);
+    wrap.querySelector(".crop-go").onclick = () => finish(true);
+    wrap.querySelector(".crop-go").focus();
+  });
+}
 async function addFile(file) {
   if (!file) return;
   const a = { name: file.name || "photo", text: "", status: "Opening…", kind: file.type.startsWith("image/") ? "image" : "text" };
@@ -641,6 +733,8 @@ async function addFile(file) {
     if (a.kind === "image") {
       a.status = "Getting the photo ready…"; drawAttachments();
       file = await shrinkImage(file);
+      a.status = "Pick the part with the problem…"; drawAttachments();
+      file = await cropPhoto(file);
       a.thumb = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(URL.createObjectURL(file)); r.readAsDataURL(file); });
       drawAttachments();
       a.text = await readPicture(file, (msg) => { a.status = msg; drawAttachments(); });
@@ -652,6 +746,8 @@ async function addFile(file) {
   } catch (e) { a.status = "⚠ " + (e && e.message ? e.message : "Couldn't read this file"); }
   drawAttachments();
 }
+// test hook: read a picture by URL the same way the camera button does (used to check reading quality)
+window.lumoTestRead = async (url) => { const f = await shrinkImage(new File([await (await fetch(url)).blob()], "t.jpg", { type: "image/jpeg" })); const text = await readPicture(f, () => {}); return { text, ...(window.lumoLastRead || {}) }; };
 $("#attachBtn").onclick = () => $("#fileIn").click();
 $("#camBtn").onclick = () => { try { sessionStorage.setItem("lumo.camera", String(Date.now())); } catch {} $("#camIn").click(); };
 $("#fileIn").onchange = (e) => { [...e.target.files].forEach(addFile); e.target.value = ""; };
