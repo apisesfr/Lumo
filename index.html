@@ -98,6 +98,10 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
 .steps li::marker{color:var(--amber);font-family:var(--f-mono);font-size:.85em}
 div.steps{padding-left:0;font-size:17px}
 .final{margin:8px 0 2px;color:var(--mist)}
+.graphwrap{margin:10px 0 4px}.graph{max-width:100%;height:auto;background:#0a0c11;border:1px solid var(--line2);border-radius:12px}
+.graph .g{stroke:rgba(255,236,200,.07);stroke-width:1}.graph .ax{stroke:rgba(255,236,200,.45);stroke-width:1.4}
+.graph .ln{stroke:var(--amber);stroke-width:2.6;stroke-linecap:round}.graph .pt{fill:var(--moon)}
+.graph .lb{fill:var(--cream);font:11px var(--f-mono)}
 .final b{color:var(--cream);font-family:var(--f-display);font-size:18px}
 .dots{display:inline-flex;gap:5px;padding:8px 0}
 .dots i{width:7px;height:7px;border-radius:50%;background:var(--amber);opacity:.35;animation:dot 1.1s infinite}
@@ -408,8 +412,10 @@ function findMath(raw) {
     let eq = m[0].trim().replace(/^[^0-9a-z(\-]+|[^0-9a-z)]+$/gi, "");
     const sides = eq.split("=");
     if (sides.length !== 2 || !sides[0].trim() || !sides[1].trim()) continue;
-    eq = eq.replace(/\b(solve|for|find|what|is|the|value|of)\b/gi, " ").replace(/\s+/g, "");
+    eq = eq.replace(/\b(solve|for|find|what|is|the|value|of|graph|plot|draw|line|equation|slope|intercept|form|and|sketch)\b/gi, " ").replace(/\s+/g, "")
+      .replace(/(\d+)\/(\d+)([a-z])/gi, "($1/$2)*$3");   // "2/3x" means (2/3)x on worksheets
     const vars = [...new Set((eq.match(/[a-z]/gi) || []).map((c) => c.toLowerCase()))];
+    if (vars.slice().sort().join("") === "xy" && /\d/.test(eq)) return { kind: "line", expr: eq, line };   // a line to graph, like y = -5x + 1
     if (vars.length === 1 && /\d/.test(eq)) return { kind: "equation", expr: eq, v: vars[0], line };
   }
   // 2) plain arithmetic, like 583 + 233 or (12*11) - 4
@@ -424,8 +430,56 @@ const tidyNum = (s) => s.replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
 // Exact steps written by the math engine (Lumo 1.1 is too small to explain math reliably yet).
 const pretty = (e) => e.replace(/\*/g, " × ").replace(/\//g, " ÷ ").replace(/([+\-=])/g, " $1 ").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")").replace(/^ - /, "-").trim();
 const fnum = (x) => { const r = Math.round(x * 1e6) / 1e6; return Object.is(r, -0) ? "0" : String(r); };
+// a small coordinate grid (-10..10) with the line and its two key points
+function miniGraph({ m, b, pts }) {
+  const NS = "http://www.w3.org/2000/svg", S = 220, u = S / 20, X = (x) => S / 2 + x * u, Y = (y) => S / 2 - y * u;
+  const el = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const svg = el("svg", { viewBox: `0 0 ${S} ${S}`, width: S, height: S, class: "graph", role: "img", "aria-label": `Graph of ${lineEq(m, b)}` });
+  for (let i = -10; i <= 10; i++) {
+    svg.append(el("line", { x1: X(i), y1: 0, x2: X(i), y2: S, class: i ? "g" : "ax" }), el("line", { x1: 0, y1: Y(i), x2: S, y2: Y(i), class: i ? "g" : "ax" }));
+  }
+  const x1 = -10, x2 = 10;
+  svg.append(el("line", { x1: X(x1), y1: Y(m * x1 + b), x2: X(x2), y2: Y(m * x2 + b), class: "ln" }));
+  for (const [px, py] of pts) {
+    if (Math.abs(px) > 10 || Math.abs(py) > 10) continue;
+    svg.append(el("circle", { cx: X(px), cy: Y(py), r: 4.5, class: "pt" }));
+    const t = el("text", { x: X(px) + 7, y: Y(py) - 7, class: "lb" }); t.textContent = `(${fnum(px)}, ${fnum(py)})`; svg.append(t);
+  }
+  const wrap = document.createElement("div"); wrap.className = "graphwrap"; wrap.append(svg); return wrap;
+}
+function frac(x) {   // -2.5 -> [-5, 2]; null if it isn't a simple fraction
+  for (let q = 1; q <= 12; q++) { const p = x * q; if (Math.abs(p - Math.round(p)) < 1e-9) return [Math.round(p), q]; }
+  return null;
+}
+const fracText = (x) => { const f = frac(x); return f && f[1] !== 1 ? `${f[0]}/${f[1]}` : fnum(x); };
+function lineEq(m, b) {
+  const mt = m === 0 ? "" : m === 1 ? "x" : m === -1 ? "-x" : `${fracText(m)}x`;
+  const bt = b === 0 ? (m === 0 ? "0" : "") : (mt ? (b > 0 ? ` + ${fracText(b)}` : ` - ${fracText(-b)}`) : fracText(b));
+  return `y = ${mt}${bt}`;
+}
 async function solveOne(m) {
   const N = window.nerdamer;
+  if (m.kind === "line") {
+    const sols = N.solveEquations(m.expr, "y");
+    if (!sols.length) return null;
+    const f = (xv) => parseFloat(N(sols[0].toString(), { x: xv }).evaluate().text("decimals"));
+    const b = f(0), sl = f(1) - b;
+    if (!isFinite(b) || !isFinite(sl) || Math.abs(f(2) - (b + 2 * sl)) > 1e-6) return null;   // not a straight line
+    const eq = lineEq(sl, b), steps = [];
+    if (!/^y=/i.test(m.expr)) steps.push(`Solve for y to get slope-intercept form (y = mx + b): ${eq}`);
+    if (sl === 0) {
+      steps.push(`The slope is 0, so this is a flat (horizontal) line.`, `Draw a horizontal line through y = ${fnum(b)}: every point has y = ${fnum(b)}, like (0, ${fnum(b)}) and (2, ${fnum(b)}).`);
+      return { shown: pretty(m.expr), answer: `horizontal line y = ${fnum(b)}`, steps, graph: { m: 0, b, pts: [[0, b], [2, b]] } };
+    }
+    const fr = frac(sl) || [sl, 1], rise = fr[0], run = fr[1];
+    const p2 = [run, b + rise];
+    steps.push(`In y = mx + b, m is the slope and b is the y-intercept. Here m = ${fracText(sl)} and b = ${fnum(b)}.`);
+    steps.push(`Plot the y-intercept: the point (0, ${fnum(b)}) on the y-axis.`);
+    steps.push(`Slope = rise / run = ${rise}/${run}. From (0, ${fnum(b)}), go ${rise < 0 ? "down" : "up"} ${Math.abs(rise)} and right ${run} to (${fnum(p2[0])}, ${fnum(p2[1])}). Plot it.`);
+    steps.push(`Draw a straight line through (0, ${fnum(b)}) and (${fnum(p2[0])}, ${fnum(p2[1])}), extending it across the grid.`);
+    steps.push(`Check: x = ${fnum(p2[0])} gives y = ${fracText(sl)}(${fnum(p2[0])}) ${b < 0 ? "-" : "+"} ${fnum(Math.abs(b))} = ${fnum(sl * p2[0] + b)} ✓`);
+    return { shown: eq, answer: `line through (0, ${fnum(b)}) and (${fnum(p2[0])}, ${fnum(p2[1])})`, steps, graph: { m: sl, b, pts: [[0, b], p2] } };
+  }
   if (m.kind === "slope") {
     const [[x1, y1], [x2, y2]] = m.p;
     if (x2 === x1) return { shown: m.line, answer: "undefined (vertical line)", steps: [`The x-values are the same (${x1}), so the line is vertical and the slope is undefined.`] };
@@ -659,8 +713,21 @@ async function readPictureOCR(file, onStatus) {
   const text = data.text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim()
     // a question mark right after a number often gets read as "7" ("of 120?" -> "of 1207")
     .split("\n").map((l) => (/^\s*(\d+[).]\s*)?(what|how|which|who|when|where|why|find|calculate|is|are|can)\b/i.test(l) && !l.includes("?") && /\d7\s*$/.test(l) ? l.replace(/7\s*$/, "?") : l)).join("\n");
-  window.lumoLastRead = { text, confidence: Math.round(data.confidence) };
-  return text;
+  const fixed = fixMathOCR(text);
+  window.lumoLastRead = { text: fixed, confidence: Math.round(data.confidence) };
+  return fixed;
+}
+// Math fonts trip up the text reader: an italic minus "−" right after "=" often comes out as a second "="
+// ("y = −5x + 1" -> "y==5x+1"), and a faint italic "y" at the start can vanish ("==5x+1").
+function fixMathOCR(text) {
+  const lines = text.split("\n");
+  return lines.map((l, i) => {
+    let t = l.replace(/([a-z0-9)\]])\s*==\s*(?=[\d.(a-z])/gi, "$1 = -");
+    const ctx = (lines[i - 1] || "") + " " + (lines[i - 2] || "") + " " + l;
+    if (/^\s*==?\s*-?\s*\d*\.?\d*\s*x/i.test(t) && /graph|line|slope|equation|y\s*=/i.test(ctx))
+      t = t.replace(/^\s*==\s*/, "y = -").replace(/^\s*=\s*/, "y = ");
+    return t;
+  }).join("\n");
 }
 const reading = (a) => a.status && !a.status.startsWith("⚠") && !a.status.startsWith("No words");
 function drawAttachments() {
@@ -796,6 +863,7 @@ async function talk(text) {
       const ol = document.createElement(c.steps.length > 1 ? "ol" : "div"); ol.className = "steps";
       for (const s of c.steps) { const li = document.createElement(c.steps.length > 1 ? "li" : "div"); li.textContent = s; ol.append(li); }
       body.append(ol);
+      if (c.graph) body.append(miniGraph(c.graph));
       if (c.steps.length > 1) { const f = document.createElement("div"); f.className = "final"; f.append("Answer: "); const b = document.createElement("b"); b.textContent = c.answer; f.append(b); body.append(f); }
       parts.push(c.steps.join("\n") + `\nAnswer: ${c.answer}`);
     }
