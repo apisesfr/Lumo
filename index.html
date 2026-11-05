@@ -98,6 +98,13 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
 .steps li::marker{color:var(--amber);font-family:var(--f-mono);font-size:.85em}
 div.steps{padding-left:0;font-size:17px}
 .final{margin:8px 0 2px;color:var(--mist)}
+.mcq{display:flex;flex-direction:column;gap:5px;margin:12px 0 2px;max-width:100%}
+.mch{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mist)}.mch b{color:var(--amber);font-size:15px;margin-left:2px}
+.mco{display:flex;align-items:flex-start;gap:10px;padding:7px 12px;border-radius:12px;border:1px solid var(--line);color:var(--mist);overflow-wrap:anywhere;min-width:0}
+.mco.on{border-color:var(--amber);background:rgba(255,190,110,.10);color:var(--cream)}
+.mcl{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:600 12px var(--f-mono);border:1px solid var(--line2)}
+.mco.on .mcl{background:var(--amber);border-color:var(--amber);color:var(--ink)}
+.mct{margin-left:auto;color:var(--amber);font-weight:700}
 .graphwrap{margin:10px 0 4px}.graph{max-width:100%;height:auto;background:#0a0c11;border:1px solid var(--line2);border-radius:12px}
 .graph .g{stroke:rgba(255,236,200,.07);stroke-width:1}.graph .ax{stroke:rgba(255,236,200,.45);stroke-width:1.4}
 .graph .ln{stroke:var(--amber);stroke-width:2.6;stroke-linecap:round}.graph .ln2{stroke:var(--moon)}
@@ -430,7 +437,10 @@ function prompt() {
   const users = convo.filter((m) => m.role === "user");
   let notes = users.length ? findNotes(users[users.length - 1].content) : [];
   if (!notes.length && users.length > 1 && users[users.length - 1].content.length < 60) notes = findNotes(users[users.length - 2].content);
-  const sys = notes.length ? "You are Lumo. Here are class notes that match the student's question. Use the facts in them so your answer is correct, and explain it in your own friendly words. If a note isn't about what they asked, ignore it. Write formulas like CO2 and C6H12O6.\n\n" + notes.map((n) => `[${n.t}] ${n.x}`).join("\n\n") : "";
+  let sys = notes.length ? "You are Lumo. Here are class notes that match the student's question. Use the facts in them so your answer is correct, and explain it in your own friendly words. If a note isn't about what they asked, ignore it. Write formulas like CO2 and C6H12O6.\n\n" + notes.map((n) => `[${n.t}] ${n.x}`).join("\n\n") : "";
+  // multiple choice: make Lumo commit to ONE letter, in the same ending it was trained on
+  const mc = users.length ? findChoices(users[users.length - 1].content) : null;
+  if (mc) sys = (sys ? sys + "\n\n" : "You are Lumo.\n\n") + `This is a multiple choice question with choices ${mc.opts.map((o) => o.L).join(", ")}. Think about each choice, pick the ONE best answer, explain why in a few sentences, and end with the words "The answer is" followed by the letter and the choice.`;
   window.lumoLastNotes = notes.map((n) => n.t);
   // newest messages first, until the memory is full; long old replies get trimmed so recent turns always fit
   const keep = []; let size = sys.length;
@@ -732,6 +742,67 @@ function findTable(text) {
     if (rows.length >= 2) return { xs: rows.map((r) => r[0]), ys: rows.map((r) => r[1]) };
   }
   return null;
+}
+// Multiple choice: finds A-D (or A-E) choices, one per line ("B) 12", "(c) mitosis", "D. none") or all on one line
+// ("a) growth b) homeostasis c) ..."). Returns { stem, opts: [{ L: "A", t: "..." }] } or null.
+function findChoices(text) {
+  const OPT = /^\s*(?:[O0o●○◯•]\s*)?\(?([A-Ea-e])\s*[).:\]]\s*(.+?)\s*$/;
+  const lines = text.split(/\n+/);
+  let opts = [], first = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(OPT);
+    if (m && m[1].toUpperCase() === "ABCDE"[opts.length]) { if (!opts.length) first = i; opts.push({ L: m[1].toUpperCase(), t: m[2] }); }
+    else if (opts.length >= 2 && lines[i].trim()) break;   // the choices ended
+    else if (m && m[1].toUpperCase() === "A") { opts = [{ L: "A", t: m[2] }]; first = i; }   // a new list started
+  }
+  if (opts.length >= 3) return { stem: lines.slice(0, first).join("\n").trim() || text, opts };
+  // all on one line: "... a) growth b) homeostasis c) reproduce d) none"
+  for (const l of lines) {
+    const marks = [...l.matchAll(/(^|[\s,;])\(?([A-Ea-e])[).]\s+/g)];
+    const seq = []; for (const m of marks) if (m[2].toUpperCase() === "ABCDE"[seq.length]) seq.push(m);
+    if (seq.length >= 3) {
+      const o = seq.map((m, i) => ({ L: m[2].toUpperCase(), t: l.slice(m.index + m[0].length, i + 1 < seq.length ? seq[i + 1].index : undefined).replace(/[\s,;]+$/, "").trim() }));
+      if (o.every((x) => x.t)) return { stem: (text.replace(l, l.slice(0, seq[0].index)).trim()) || text, opts: o };
+    }
+  }
+  return null;
+}
+// Which choice matches a solved math answer? ("x = 3" matches "3", "B) x = 3", "75" matches "75%", fractions too)
+function matchChoice(answer, opts) {
+  const norm = (s) => String(s).toLowerCase().replace(/[−–]/g, "-").replace(/\s+/g, "").replace(/^[a-z]=/, "").replace(/[.%$]+$/, "");
+  const num = (s) => { const t = norm(s); const f = t.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/); return f ? f[1] / f[2] : /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : NaN; };
+  const parts = String(answer).split(/\s*(?:,|\bor\b|→)\s*/).filter(Boolean);
+  const hits = opts.filter((o) => {
+    if (norm(o.t) === norm(answer)) return true;
+    const ov = num(o.t);
+    return parts.some((p) => norm(p) === norm(o.t) || (!isNaN(ov) && Math.abs(num(p) - ov) < 1e-9));
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+// Which letter did Lumo pick? "The answer is B) ...", "answer: (c)", "choice D", or else the one choice its last lines name.
+function pickedChoice(reply, mc) {
+  const ok = (L) => mc.opts.find((o) => o.L === String(L).toUpperCase());
+  // a lowercase letter only counts with a bracket after it ("(d)", "d)"), so "the answer is a mitochondrion" isn't read as A
+  const LET = String.raw`(?:[(<]([A-Ea-e])[)>]|([A-E])(?![A-Za-z'])|([a-e])\))`;
+  const pats = [new RegExp(String.raw`answer\s*(?:is|would be|=)?\s*:?\s*\**\s*` + LET, "gi"), new RegExp(String.raw`\b(?:choice|option)\s*` + LET, "gi"), /^\s*\**\(?([A-E])[).]/gm];
+  for (const re of pats) {
+    const all = [...reply.matchAll(re)].map((m) => m[1] || (m[2] && m[2] === m[2].toUpperCase() ? m[2] : null) || m[3]).filter(Boolean);
+    if (all.length) { const p = ok(all[all.length - 1]); if (p) return p; }
+  }
+  const tail = reply.slice(-260).toLowerCase();
+  const named = mc.opts.filter((o) => o.t.length >= 3 && tail.includes(o.t.toLowerCase()));
+  return named.length === 1 ? named[0] : null;
+}
+function choiceBadge(mc, pick) {
+  const box = document.createElement("div"); box.className = "mcq";
+  const h = document.createElement("div"); h.className = "mch"; h.append("Answer: "); const b = document.createElement("b"); b.textContent = pick.L; h.append(b); box.append(h);
+  for (const o of mc.opts) {
+    const r = document.createElement("div"); r.className = "mco" + (o.L === pick.L ? " on" : "");
+    const l = document.createElement("span"); l.className = "mcl"; l.textContent = o.L;
+    r.append(l, chem(o.t)); if (o.L === pick.L) { const t = document.createElement("span"); t.className = "mct"; t.textContent = "✓"; r.append(t); }
+    box.append(r);
+  }
+  return box;
 }
 async function checkMath(text) {
   // "y = 2x + 1 and y = -x + 7" on one line -> two equations (keep the words in front for context)
@@ -1057,7 +1128,7 @@ async function addFile(file) {
   } catch (e) { a.status = "⚠ " + (e && e.message ? e.message : "Couldn't read this file"); }
   drawAttachments();
 }
-window.__dbg = { chem, prompt, get convo() { return convo; }, findTable, checkMath, findMath, cleanPhoto, shrinkImage };
+window.__dbg = { chem, findChoices, matchChoice, pickedChoice, choiceBadge, prompt, get convo() { return convo; }, findTable, checkMath, findMath, cleanPhoto, shrinkImage };
 // test hook: read a picture by URL the same way the camera button does (used to check reading quality)
 window.lumoTestRead = async (url) => { const f = await shrinkImage(new File([await (await fetch(url)).blob()], "t.jpg", { type: "image/jpeg" })); const text = await readPicture(f, () => {}); return { text, ...(window.lumoLastRead || {}) }; };
 $("#attachBtn").onclick = () => $("#fileIn").click();
@@ -1087,7 +1158,15 @@ async function talk(text) {
   busy = true; setSendIcon("stop"); window.lumoState.mode = "thinking";
   let reply = "";
   // Math the engine can solve exactly gets exact steps; Lumo answers everything else.
-  const checked = await checkMath(full);
+  // Multiple choice? Solve just the question part, then see which choice the exact answer matches.
+  const mc = findChoices(full);
+  const checked = await checkMath(mc ? mc.stem : full);
+  if (mc && checked.length === 1) {
+    const c = checked[0], pick = matchChoice(c.answer, mc.opts);
+    c.simple = false;
+    if (pick) { c.steps = [...c.steps, `That matches choice ${pick.L}) ${pick.t}`]; c.answer = `${pick.L}) ${pick.t}`; c.mc = pick; }
+    else c.steps = [...c.steps, `None of the choices (${mc.opts.map((o) => `${o.L}) ${o.t}`).join(", ")}) match ${c.answer} exactly. Check that the question was read right.`];
+  }
   if (checked.length) {
     if (!(checked.length === 1 && checked[0].simple)) {
       const card = document.createElement("div"); card.className = "check";
@@ -1115,8 +1194,9 @@ async function talk(text) {
         body.append(t);
       }
       if (c.graph) body.append(miniGraph(c.graph));
-      if (c.steps.length > 1) { const f = document.createElement("div"); f.className = "final"; f.append("Answer: "); const b = document.createElement("b"); b.textContent = c.answer; f.append(b); body.append(f); }
-      parts.push(c.steps.join("\n") + `\nAnswer: ${c.answer}`);
+      if (c.mc) body.append(choiceBadge(mc, c.mc));
+      else if (c.steps.length > 1) { const f = document.createElement("div"); f.className = "final"; f.append("Answer: "); const b = document.createElement("b"); b.textContent = c.answer; f.append(b); body.append(f); }
+      parts.push(c.steps.join("\n") + (c.mc ? `\nThe answer is ${c.answer}.` : `\nAnswer: ${c.answer}`));
     }
     reply = parts.join("\n\n");
     row.classList.remove("thinking");
@@ -1145,8 +1225,19 @@ async function talk(text) {
     render(el, said, false);
     return said;
   }
-  reply = await speak(prompt(), body);
+  const asked = prompt();
+  reply = await speak(asked, body);
   if (!reply) body.textContent = "(Lumo didn't say anything. Try asking another way.)";
+  else if (mc) {
+    let pick = pickedChoice(reply, mc);
+    if (!pick && !ctrl.signal.aborted) {   // it explained but never said a letter: finish its reply with "The answer is" and let it fill in just the letter
+      let tail = "";
+      try { await wllama.createCompletion(asked + reply + "\n\nThe answer is", { nPredict: 5, sampling: { temp: 0 }, stopTokens: STOP, onNewToken: (_t, _p, c) => { tail = c; } }); } catch {}
+      pick = pickedChoice("The answer is" + tail, mc);
+      if (pick) reply += `\n\nThe answer is ${pick.L}) ${pick.t}.`;
+    }
+    if (pick) body.append(choiceBadge(mc, pick));
+  }
   row.classList.remove("thinking");
   convo.push({ role: "assistant", content: reply }); saveChat();
   busy = false; stop = null; setSendIcon("send"); window.lumoState.mode = "idle";
