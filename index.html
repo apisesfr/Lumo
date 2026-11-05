@@ -218,6 +218,7 @@ button:disabled{opacity:.35;cursor:default}
 </div>
 
 <script src="notes-bio.js"></script>
+<script src="notes-auto.js"></script>
 <script>
 /* ---------- night sky + Lumo's orb (canvas) ---------- */
 (() => {
@@ -421,15 +422,20 @@ function findNotes(question, max = 2) {
     let sc = 0;
     for (const w of q) { const f = d.tf.get(w); if (!f) continue; const idf = Math.log(1 + (N - df.get(w) + 0.5) / (df.get(w) + 0.5)); if (d.title.has(w)) sc += 1.3 * idf; sc += idf * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * d.len / avg)); }
     return { n: d.n, sc };
-  }).filter((r) => r.sc > 0).sort((a, b) => b.sc - a.sc);
+  }).filter((r) => r.sc > 0)
+    // clearly about another class (cars, geometry, writing...): drop the bio notes unless one is a very strong match
+    .filter((r) => (r.n.s || "bio") !== "bio" || !NOT_BIO.test(question) || r.sc >= 16)
+    // car notes only when the question isn't clearly bio/body
+    .filter((r) => r.n.s !== "auto" || !NOT_AUTO.test(question) || r.sc >= 12)
+    .sort((a, b) => b.sc - a.sc);
   window.lumoNoteScores = scored.slice(0, 4).map((r) => [r.n.t, Math.round(r.sc * 10) / 10]);
-  if (!scored.length || scored[0].sc < NOTE_MIN) return [];   // weak match: probably not a bio question, so don't distract Lumo
-  // clearly another class (cars, geometry, writing...) and not a strong bio match: skip
-  if (NOT_BIO.test(question) && scored[0].sc < 12) return [];
-  return scored.slice(0, max).filter((r, i) => i === 0 || r.sc > scored[0].sc * 0.55).map((r) => r.n);
+  if (!scored.length || scored[0].sc < NOTE_MIN) return [];   // weak match: probably not a class-notes question, so don't distract Lumo
+  const subj = scored[0].n.s || "bio";                         // the second note must be from the same class
+  return scored.slice(0, max).filter((r, i) => i === 0 || (r.sc > scored[0].sc * 0.55 && (r.n.s || "bio") === subj)).map((r) => r.n);
 }
+const NOT_AUTO = /\b(cells?|organelles?|dna|rna|genes?|photosynthesis|mitosis|meiosis|blood|heart|lungs?|body|plants?|animals?|ecosystem|evolution|enzymes?|protein|bacteria|virus)\b/i;
 let NOTE_MIN = 5;
-const NOT_BIO = /\b(change (my |the |your )?oil|oil change|motor oil|car|truck|engine|vehicle|brakes?|tires?|motor|transmission|excel|spreadsheet|triangle|circle|rectangle|square root|perimeter|polygon|essay|poem|novel|thesis|president|war|congress|python|javascript|code|recipe)\b/i;
+const NOT_BIO = /\b(capital|country|countries|city|history|change (my |the |your )?oil|oil change|motor oil|car|truck|engine|vehicle|brakes?|tires?|motor|transmission|excel|spreadsheet|triangle|circle|rectangle|square root|perimeter|polygon|essay|poem|novel|thesis|president|war|congress|python|javascript|code|recipe)\b/i;
 window.__notes = findNotes;
 
 function prompt() {
