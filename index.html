@@ -157,10 +157,10 @@ button:disabled{opacity:.35;cursor:default}
       <section class="hero" id="hero">
         <div class="orbwrap"><canvas id="orb" width="368" height="368" aria-hidden="true"></canvas></div>
         <h1>Hi, I'm <em>Lumo</em></h1>
-        <p class="lede">A compact AI model trained from scratch, running entirely in your browser. Your messages, files and photos never leave your device.</p>
+        <p class="lede">A free AI made by a student, for students. Lumo runs entirely in your browser, so your messages, files and photos never leave your device.</p>
         <ul class="facts">
-          <li><b>83M</b> parameters</li>
-          <li><b>16k</b> custom tokenizer</li>
+          <li><b>0.6B</b> parameters</li>
+          <li><b>48/50</b> on our school test</li>
           <li><b>100%</b> on-device</li>
           <li><b>Free</b> &amp; private</li>
         </ul>
@@ -192,7 +192,7 @@ button:disabled{opacity:.35;cursor:default}
         <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>
       </button>
     </div>
-    <p class="fine">Lumo can make mistakes. Check important information. Math marked "Checked answer" is solved exactly.</p>
+    <p class="fine">Lumo can make mistakes. Check important information. Math marked "Checked answer" is solved exactly. Built on <a href="https://huggingface.co/Qwen/Qwen3-0.6B" target="_blank" rel="noopener">Qwen3</a> (Apache 2.0).</p>
   </footer>
 </div>
 
@@ -254,8 +254,14 @@ button:disabled{opacity:.35;cursor:default}
 <script type="module">
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/index.js";
 
-const VERSION = "1.1";
-const MODEL_URL = new URL("lumo-1.1.gguf", location.href).href;
+const VERSION = "Pro";
+// Lumo Pro = Qwen3-0.6B fine-tuned on Lumo's personality + school data. Split into <100 MB pieces for GitHub.
+// Phones get the 4-bit version (341 MB, 46/50 on our test); computers get 5-bit (397 MB, 48/50).
+const PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+const [QNAME, QPARTS] = PHONE ? ["q4", 4] : ["q5", 5];
+const MODEL_URLS = Array.from({ length: QPARTS }, (_, i) =>
+  new URL(`lumo-pro-${QNAME}-${String(i + 1).padStart(5, "0")}-of-${String(QPARTS).padStart(5, "0")}.gguf`, location.href).href);
+const STOP = [151645, 151643]; // <|im_end|>, <|endoftext|>
 const CDN = "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/";
 const $ = (s) => document.querySelector(s);
 const thread = $("#thread"), input = $("#input"), send = $("#send"), main = $("#main");
@@ -268,7 +274,7 @@ const ICON = {
   stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/>',
 };
 const svgEl = (html) => { const t = document.createElement("template"); t.innerHTML = html; return t.content.firstChild; };
-$("#ver").textContent = "v" + VERSION;
+$("#ver").textContent = /^\d/.test(VERSION) ? "v" + VERSION : VERSION;
 let wllama, convo = [], busy = false, stop = null;
 
 function status(text, isErr) {
@@ -279,8 +285,8 @@ function status(text, isErr) {
 async function boot() {
   try {
     wllama = new Wllama({ "single-thread/wllama.wasm": CDN + "single-thread/wllama.wasm", "multi-thread/wllama.wasm": CDN + "multi-thread/wllama.wasm" });
-    await wllama.loadModelFromUrl(MODEL_URL, {
-      n_ctx: 1024,
+    await wllama.loadModelFromUrl(MODEL_URLS, {
+      n_ctx: 4096,
       progressCallback: ({ loaded, total }) => {
         const p = total ? loaded / total : 0; window.lumoState.progress = p;
         status(`Downloading Lumo · ${Math.round(p * 100)}% · ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB (first visit only)`);
@@ -349,9 +355,8 @@ function render(body, text, live) {
   if (live) body.classList.add("caret"); else body.classList.remove("caret");
 }
 
-// How much chat Lumo can keep in mind. 1.1 trained on 512-token pieces (~1,600 characters);
-// 2.1 and 3.0 train on 1,024 tokens, so raise this to ~3,200 when the site switches to them.
-const MEMORY_CHARS = 1600;
+// How much chat Lumo keeps in mind (~2,500 tokens; the model runs with a 4,096-token window).
+const MEMORY_CHARS = 9000;
 function prompt() {
   // newest messages first, until the memory is full; long old replies get trimmed so recent turns always fit
   const keep = []; let size = 0;
@@ -362,8 +367,8 @@ function prompt() {
     keep.unshift({ role: m.role, content: c }); size += c.length;
   }
   let p = "";
-  for (const m of keep) p += m.role === "user" ? `<|user|>\n${m.content}\n<|assistant|>\n` : `${m.content}<|end|>\n`;
-  return p;
+  for (const m of keep) p += `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`;
+  return p + "<|im_start|>assistant\n<think>\n\n</think>\n\n"; // Lumo Pro answers directly (no "thinking" mode)
 }
 
 /* ---------- exact math checker (nerdamer): small AIs guess at math, a solver doesn't ---------- */
@@ -711,10 +716,10 @@ async function talk(text) {
       await wllama.createCompletion(text, {
         nPredict: n,
         sampling: { temp: 0.6, top_k: 40, top_p: 0.92, penalty_repeat: 1.12 },
-        stopTokens: [3, 1],
+        stopTokens: STOP,
         abortSignal: ctrl.signal,
         onNewToken: (_t, _p, current) => {
-          said = current.replace(/<\|(end|user|assistant)\|>[\s\S]*$/, "");
+          said = current.replace(/<\|(im_end|im_start|endoftext)\|>[\s\S]*$/, "").replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "");
           render(el, said, true);
           if (main.scrollHeight - main.scrollTop - main.clientHeight < 160) scrollDown();
         },
