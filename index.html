@@ -210,6 +210,7 @@ button:disabled{opacity:.35;cursor:default}
   </footer>
 </div>
 
+<script src="notes-bio.js"></script>
 <script>
 /* ---------- night sky + Lumo's orb (canvas) ---------- */
 (() => {
@@ -343,11 +344,26 @@ function lumoMsg() {
   return { row, body };
 }
 
+// Science formulas get their small numbers: CO2 -> CO₂, C6H12O6 -> C₆H₁₂O₆, 6O2 -> 6O₂, x^2 -> x², "->" -> "→".
+// Only real element symbols count, and never a "1" (formulas don't write it), so H1N1, G2, A1, B12, C4 stay as they are.
+const ELEMENTS = new Set("H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Fe Cu Zn Br I Ag Au Pb Hg Mn Cr Co Ni Sn Ba Sr Se Ti U Pt".split(" "));
+const SUB = "₀₁₂₃₄₅₆₇₈₉", SUP = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹", "-": "⁻", "+": "⁺" };
+function chem(text) {
+  return text
+    .replace(/(^|[^A-Za-z0-9_])(\d*)((?:[A-Z][a-z]?\d*){1,8})(?![A-Za-z0-9_])/g, (all, pre, coef, f) => {
+      const parts = [...f.matchAll(/([A-Z][a-z]?)(\d*)/g)];
+      if (/^PS\d$/.test(f) || !/\d/.test(f) || parts.some(([, el, n]) => !ELEMENTS.has(el) || n === "1" || /^0/.test(n))) return all;
+      if (parts.length === 1 && !["O2", "N2", "H2", "O3", "Cl2", "F2", "Br2", "I2"].includes(f)) return all;
+      return pre + coef + f.replace(/\d/g, (d) => SUB[d]);
+    })
+    .replace(/([A-Za-z0-9)])\^(-?\d{1,3})(?![\d.])/g, (all, b, e) => b + [...e].map((c) => SUP[c]).join(""))
+    .replace(/\s->\s/g, " → ").replace(/\s<-\s/g, " ← ");
+}
 // ``` code blocks become code cards with a copy button; `inline` becomes <code>. DOM only, never innerHTML.
 function inline(parent, text) {
   text.split(/`([^`\n]+)`/).forEach((part, i) => {
     if (!part) return;
-    if (i % 2) { const c = document.createElement("code"); c.textContent = part; parent.append(c); } else parent.append(part);
+    if (i % 2) { const c = document.createElement("code"); c.textContent = part; parent.append(c); } else parent.append(chem(part));
   });
 }
 function render(body, text, live) {
@@ -371,16 +387,60 @@ function render(body, text, live) {
 
 // How much chat Lumo keeps in mind (~2,500 tokens; the model runs with a 4,096-token window).
 const MEMORY_CHARS = 9000;
+
+// ---- class notes: find the notes that match a question (simple BM25 search), so Lumo answers from facts instead of guessing ----
+const NOTE_STOP = new Set("a an the is are was were be been of to in on at by for with and or but if then so as it its this that these those what which who whom whose how why when where do does did can could would should will shall may might must i you he she we they me my your our their them his her about from into than also just not no yes please explain tell describe give define definition mean means meaning lumo bro yo hey hi".split(" "));
+const stem = (w) => w.replace(/ies$/, "y").replace(/sses$/, "ss").replace(/([^s])s$/, "$1").replace(/(ing|ed)$/, "").replace(/e$/, "");
+const noteWords = (t) => (t.toLowerCase().replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d))).match(/[a-z0-9]+/g) || []).filter((w) => !NOTE_STOP.has(w) && w.length > 1).map(stem);
+let noteIndex = null;
+function buildNoteIndex() {
+  const notes = window.LUMO_NOTES || [], df = new Map();
+  const docs = notes.map((n) => {
+    const tf = new Map(), add = (t, wgt) => { for (const w of noteWords(t)) tf.set(w, (tf.get(w) || 0) + wgt); };
+    add(n.t, 3); add(n.k, 2); add(n.x, 1);
+    for (const w of tf.keys()) df.set(w, (df.get(w) || 0) + 1);
+    let len = 0; for (const v of tf.values()) len += v;
+    return { n, tf, len, title: new Set(noteWords(n.t)) };
+  });
+  const avg = docs.reduce((a, d) => a + d.len, 0) / Math.max(1, docs.length);
+  noteIndex = { docs, df, avg, N: docs.length };
+}
+function findNotes(question, max = 2) {
+  if (!window.LUMO_NOTES) return [];
+  if (!noteIndex || noteIndex.N !== window.LUMO_NOTES.length) buildNoteIndex();
+  const { docs, df, avg, N } = noteIndex, q = [...new Set(noteWords(question))];
+  if (!q.length) return [];
+  const scored = docs.map((d) => {
+    let sc = 0;
+    for (const w of q) { const f = d.tf.get(w); if (!f) continue; const idf = Math.log(1 + (N - df.get(w) + 0.5) / (df.get(w) + 0.5)); if (d.title.has(w)) sc += 1.3 * idf; sc += idf * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * d.len / avg)); }
+    return { n: d.n, sc };
+  }).filter((r) => r.sc > 0).sort((a, b) => b.sc - a.sc);
+  window.lumoNoteScores = scored.slice(0, 4).map((r) => [r.n.t, Math.round(r.sc * 10) / 10]);
+  if (!scored.length || scored[0].sc < NOTE_MIN) return [];   // weak match: probably not a bio question, so don't distract Lumo
+  // clearly another class (cars, geometry, writing...) and not a strong bio match: skip
+  if (NOT_BIO.test(question) && scored[0].sc < 12) return [];
+  return scored.slice(0, max).filter((r, i) => i === 0 || r.sc > scored[0].sc * 0.55).map((r) => r.n);
+}
+let NOTE_MIN = 5;
+const NOT_BIO = /\b(change (my |the |your )?oil|oil change|motor oil|car|truck|engine|vehicle|brakes?|tires?|motor|transmission|excel|spreadsheet|triangle|circle|rectangle|square root|perimeter|polygon|essay|poem|novel|thesis|president|war|congress|python|javascript|code|recipe)\b/i;
+window.__notes = findNotes;
+
 function prompt() {
+  // which notes fit? look at the newest question (and the one before it, for short follow-ups like "explain more")
+  const users = convo.filter((m) => m.role === "user");
+  let notes = users.length ? findNotes(users[users.length - 1].content) : [];
+  if (!notes.length && users.length > 1 && users[users.length - 1].content.length < 60) notes = findNotes(users[users.length - 2].content);
+  const sys = notes.length ? "You are Lumo. Here are class notes that match the student's question. Use the facts in them so your answer is correct, and explain it in your own friendly words. If a note isn't about what they asked, ignore it. Write formulas like CO2 and C6H12O6.\n\n" + notes.map((n) => `[${n.t}] ${n.x}`).join("\n\n") : "";
+  window.lumoLastNotes = notes.map((n) => n.t);
   // newest messages first, until the memory is full; long old replies get trimmed so recent turns always fit
-  const keep = []; let size = 0;
+  const keep = []; let size = sys.length;
   for (let i = convo.length - 1; i >= 0; i--) {
     const m = convo[i], room = MEMORY_CHARS - size;
     if (room < 80 && keep.length) break;
     const c = m.content.length > room ? (m.role === "user" ? m.content.slice(-room) : m.content.slice(0, room)) : m.content;
     keep.unshift({ role: m.role, content: c }); size += c.length;
   }
-  let p = "";
+  let p = sys ? `<|im_start|>system\n${sys}<|im_end|>\n` : "";
   for (const m of keep) p += `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`;
   return p + "<|im_start|>assistant\n<think>\n\n</think>\n\n"; // Lumo Pro answers directly (no "thinking" mode)
 }
@@ -997,7 +1057,7 @@ async function addFile(file) {
   } catch (e) { a.status = "⚠ " + (e && e.message ? e.message : "Couldn't read this file"); }
   drawAttachments();
 }
-window.__dbg = { findTable, checkMath, findMath, cleanPhoto, shrinkImage };
+window.__dbg = { chem, prompt, get convo() { return convo; }, findTable, checkMath, findMath, cleanPhoto, shrinkImage };
 // test hook: read a picture by URL the same way the camera button does (used to check reading quality)
 window.lumoTestRead = async (url) => { const f = await shrinkImage(new File([await (await fetch(url)).blob()], "t.jpg", { type: "image/jpeg" })); const text = await readPicture(f, () => {}); return { text, ...(window.lumoLastRead || {}) }; };
 $("#attachBtn").onclick = () => $("#fileIn").click();
