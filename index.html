@@ -153,7 +153,6 @@ div.steps{padding-left:0;font-size:17px}
 .att .x{width:28px;height:28px;border-radius:8px;color:var(--mist);display:grid;place-items:center}
 .att .x:hover{background:rgba(255,255,255,.06);color:var(--cream)}
 .att .x svg{width:14px;height:14px}
-.attwrap{display:flex;flex-direction:column;gap:6px;width:100%}
 .cropper{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:var(--ink);padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
 .crop-top{text-align:center;color:var(--mist);font-size:14px;margin-bottom:10px}
 .crop-stage{position:relative;flex:1 1 0;min-height:0;min-width:0;width:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;cursor:crosshair}
@@ -162,9 +161,6 @@ div.steps{padding-left:0;font-size:17px}
 .crop-actions{display:flex;gap:10px;justify-content:center;margin-top:12px}
 .crop-actions button{padding:11px 18px;border-radius:14px;border:1px solid var(--line2);color:var(--cream);font-size:15px}
 .crop-actions .crop-go{background:radial-gradient(circle at 35% 30%,#fff3d6,var(--amber) 45%,var(--ember));color:#1b1206;border:0;font-weight:700}
-.readbox label{display:block;font-size:12px;color:var(--mist)}
-.readbox textarea{display:block;width:100%;margin-top:4px;max-height:9rem;padding:8px 10px;border-radius:12px;border:1px solid var(--line2);background:var(--ink2);color:var(--cream);font:14px/1.45 var(--f-mono);resize:vertical}
-.readbox textarea:focus{border-color:rgba(255,189,89,.45);outline:none}
 .box{max-width:740px;margin:0 auto;display:flex;align-items:flex-end;gap:4px;padding:6px;border-radius:24px;background:rgba(18,21,29,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line2);box-shadow:0 10px 40px rgba(0,0,0,.45);transition:border-color .2s,box-shadow .2s}
 .box:focus-within{border-color:rgba(255,189,89,.45);box-shadow:0 10px 40px rgba(0,0,0,.45),0 0 0 4px rgba(255,189,89,.08)}
 .tool{width:40px;height:40px;flex:none;border-radius:14px;display:grid;place-items:center;color:var(--mist);transition:color .2s,background .2s}
@@ -1392,21 +1388,15 @@ function drawAttachments() {
     else { const ic = document.createElement("div"); ic.className = "ic"; ic.append(svgEl(ICON.file)); el.append(ic); }
     const t = document.createElement("div"); t.className = "t";
     const b = document.createElement("b"); b.textContent = a.name;
-    const s = document.createElement("span"); s.textContent = a.status || `${a.text.length.toLocaleString()} characters read`;
+    // what the scanner read stays behind the scenes: the student just sees that the photo is ready
+    const photoReady = a.kind === "image" && !reading(a) && (a.text || (mode === "cloud" && a.image));
+    const s = document.createElement("span");
+    s.textContent = photoReady ? "Photo ready" : a.status || (a.kind === "image" ? "Photo ready" : `${a.text.length.toLocaleString()} characters`);
     t.append(b, s);
     const x = document.createElement("button"); x.className = "x"; x.type = "button"; x.setAttribute("aria-label", "Remove " + a.name); x.append(svgEl(ICON.x));
     x.onclick = () => { attachments.splice(attachments.indexOf(a), 1); drawAttachments(); };
     el.append(t, x);
-    if (a.kind === "image" && !reading(a)) {
-      // show what was read, so a wrong number can be fixed before sending
-      const wrap = document.createElement("div"); wrap.className = "readbox";
-      const lab = document.createElement("label"); lab.textContent = "What Zenyo read (fix anything that's wrong):";
-      const ta = document.createElement("textarea"); ta.rows = Math.min(6, Math.max(2, a.text.split("\n").length)); ta.value = a.text;
-      ta.setAttribute("aria-label", "Text read from " + a.name);
-      ta.addEventListener("input", () => { a.text = ta.value; s.textContent = a.text ? `${a.text.length.toLocaleString()} characters read` : "No words"; });
-      lab.append(ta); wrap.append(lab);
-      const holder = document.createElement("div"); holder.className = "attwrap"; holder.append(el, wrap); box.append(holder);
-    } else box.append(el);
+    box.append(el);
   }
 }
 // Crop: drag a box around just the problem. Less background = better reading, and faster.
@@ -1460,7 +1450,7 @@ async function addFile(file) {
       drawAttachments();
       // Zenyo Cloud can look at the photo itself (handwriting, diagrams, graphs): keep a smaller copy to send
       if (CLOUD_URL) shrinkImage(file, 1280).then((f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(f); }))
-        .then((u) => { if (u && /^data:image\/(jpeg|png|webp);base64,/.test(u) && u.length < 1_450_000) a.image = u; }).catch(() => {});
+        .then((u) => { if (u && /^data:image\/(jpeg|png|webp);base64,/.test(u) && u.length < 1_450_000) { a.image = u; drawAttachments(); } }).catch(() => {});
       a.text = await readPicture(file, (msg) => { a.status = msg; drawAttachments(); });
       a.status = a.text ? "" : "No words found in this picture";
     } else {
