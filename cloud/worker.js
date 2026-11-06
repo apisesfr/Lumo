@@ -62,7 +62,14 @@ export default {
     const messages = [{ role: "system", content: LUMO + (notes ? "\n\n" + notes : "") }, ...clean.filter((m) => m.role !== "system")];
 
     try {
-      const stream = await env.AI.run(MODEL, { messages, stream: true, max_tokens: 1200, temperature: 0.6 });
+      const opts = { messages, stream: true, max_tokens: 1200, temperature: 0.6 };
+      let stream;
+      try {   // answer right away instead of "thinking" first: faster, and about half the cost per chat
+        stream = await env.AI.run(MODEL, { ...opts, chat_template_kwargs: { enable_thinking: false } });
+      } catch (e) {
+        if (/4006|allocation|limit|429|capacity/i.test(String((e && e.message) || e))) throw e;
+        stream = await env.AI.run(MODEL, opts);   // this model doesn't take the setting: run it normally
+      }
       return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", ...cors(origin) } });
     } catch (e) {
       const msg = String((e && e.message) || e);

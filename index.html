@@ -308,7 +308,7 @@ let wllama, convo = [], busy = false, stop = null;
 
 /* ---------- Lumo Cloud: a bigger AI on a free Cloudflare Worker (cloud/worker.js), with a daily limit.
    When it's out of free messages or offline, the site offers the on-device Lumo Pro instead. ---------- */
-const CLOUD_DEFAULT = "";   // the Worker's URL, e.g. "https://lumo-cloud.<name>.workers.dev" (empty = cloud mode off)
+const CLOUD_DEFAULT = "https://lumo-cloud.elithornhill.workers.dev";   // the Worker's URL (empty = cloud mode off)
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const CLOUD_URL = (store.get("lumo.cloudUrl") || CLOUD_DEFAULT).replace(/\/+$/, "");
 let mode = CLOUD_URL && store.get("lumo.mode") !== "device" ? "cloud" : "device";
