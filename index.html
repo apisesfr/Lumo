@@ -47,6 +47,21 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 .cloudbtn{margin-top:10px;padding:8px 13px;border-radius:12px;border:1px solid rgba(255,189,89,.4);color:var(--cream);background:rgba(255,189,89,.08);font-size:14px;cursor:pointer}
 .cloudbtn:disabled{opacity:.5;cursor:default}
 .thinktag{color:var(--mist);font-style:italic;animation:thinkpulse 1.6s ease-in-out infinite}
+.limitcard{white-space:normal;margin:2px 0;padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);max-width:34rem}
+.limitcard .lc-h{display:flex;align-items:center;gap:10px;font-size:15.5px}
+.limitcard .lc-h b{font-weight:600}
+.limitcard .lc-ic{font-size:20px;line-height:1}
+.limitcard p{margin:6px 0 12px;color:var(--mist);font-size:14.5px;line-height:1.5}
+.limitcard .lc-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.limitcard .lc-go{padding:9px 16px;border-radius:999px;background:var(--cream);color:#111;font-weight:600;font-size:14px}
+.limitcard .lc-go:hover{background:#fff}
+.limitcard .lc-note{font-size:12.5px;color:var(--dim)}
+.limitcard .lc-prog{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mist)}
+.limitcard .lc-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
+.limitcard .lc-bar>div{height:100%;width:0;background:var(--cream);transition:width .3s}
+.limitcard .err{color:var(--bad)}
+.pronote{max-width:768px;margin:0 auto 8px;padding:7px 14px;border-radius:12px;background:rgba(255,255,255,.04);font-size:12.5px;color:var(--mist);text-align:center}
+.pronote b{color:var(--cream);font-weight:600}
 @keyframes thinkpulse{50%{opacity:.45}}
 .top .new svg{width:16px;height:16px}
 
@@ -337,6 +352,7 @@ try { for (const st of [localStorage, sessionStorage]) for (const k of Object.ke
   </main>
 
   <footer class="dock">
+    <div class="pronote" id="proNote" hidden>Zenyo Cloud is resting until tomorrow, so <b>Zenyo Pro</b> is answering on your device.</div>
     <div class="attach" id="attach"></div>
     <div class="box">
       <button class="tool" id="attachBtn" title="Attach a file or picture" aria-label="Attach a file or picture" disabled>
@@ -455,6 +471,10 @@ let wllama, convo = [], busy = false, stop = null;
 const CLOUD_DEFAULT = "https://lumo-cloud.elithornhill.workers.dev";   // the Worker's URL (empty = cloud mode off)
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const CLOUD_URL = (store.get("zenyo.cloudUrl") || CLOUD_DEFAULT).replace(/\/+$/, "");
+// If Zenyo Pro took over because Zenyo Cloud ran out yesterday (or earlier), go back to Cloud now that it has reset.
+if (store.get("zenyo.autoPro") === "1" && store.get("zenyo.cloudOffDay") !== new Date().toISOString().slice(0, 10)) {
+  store.set("zenyo.mode", "cloud"); store.set("zenyo.autoPro", "0");
+}
 let mode = CLOUD_URL && store.get("zenyo.mode") !== "device" ? "cloud" : "device";
 let booting = null;
 const LEDE = {
@@ -471,6 +491,7 @@ function showMode() {
   $(".lede").textContent = LEDE[mode];
   for (const li of document.querySelectorAll(".facts li")) li.hidden = mode === "cloud";
   $("#ver").textContent = mode === "cloud" ? "Cloud" : (/^\d/.test(VERSION) ? "v" + VERSION : VERSION);
+  showProNote();
 }
 function enableInput() {
   $("#status").hidden = true; $("#ideas").hidden = false;
@@ -486,7 +507,10 @@ function setMode(m) {
 const menu = $("#modeMenu");
 function openMenu(open) { menu.hidden = !open; $("#modeBtn").setAttribute("aria-expanded", open); }
 $("#modeBtn").addEventListener("click", (e) => { if (!CLOUD_URL) return; e.stopPropagation(); openMenu(menu.hidden); });
-menu.addEventListener("click", (e) => { const it = e.target.closest("button[data-mode]"); if (it) { openMenu(false); setMode(it.dataset.mode); } });
+menu.addEventListener("click", (e) => {
+  const it = e.target.closest("button[data-mode]");
+  if (it) { openMenu(false); store.set("zenyo.autoPro", "0"); setMode(it.dataset.mode); showProNote(); }   // the student picked a mode themselves
+});
 addEventListener("click", (e) => { if (!menu.hidden && !e.target.closest(".picker")) openMenu(false); });
 addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) openMenu(false); });
 
@@ -577,6 +601,7 @@ async function downloadModel(onProgress) {
 }
 async function bootDevice() {
   try {
+    window.zenyoState.error = null;
     wllama = wllama || new Wllama({ "single-thread/wllama.wasm": CDN + "single-thread/wllama.wasm", "multi-thread/wllama.wasm": CDN + "multi-thread/wllama.wasm" });
     // free the space the old model (v3) used in wllama's own cache
     if (store.get("zenyo.oldModelCleared") !== "1") { try { await wllama.cacheManager?.clear?.(); } catch {} store.set("zenyo.oldModelCleared", "1"); }
@@ -591,6 +616,7 @@ async function bootDevice() {
   } catch (e) {
     wllama = null;
     window.zenyoState.mode = "idle";
+    window.zenyoState.error = "Zenyo Pro couldn't start on this device. Try Chrome, Edge or Safari on a newer phone or laptop.";
     status("Zenyo couldn't start on this device. Try Chrome, Edge or Safari on a newer phone or laptop. (" + (e && e.message ? e.message : e) + ")", true);
     console.error(e);
   }
@@ -1457,20 +1483,68 @@ addEventListener("drop", (e) => { e.preventDefault(); [...(e.dataTransfer?.files
 
 function setSendIcon(kind) { $("#sendIcon").innerHTML = ICON[kind]; send.setAttribute("aria-label", kind === "stop" ? "Stop" : "Send"); }
 
-async function talk(text) {
-  text = text.trim();
+/* ---------- when Zenyo Cloud can't answer: a card that offers Zenyo Pro and answers the same question with it ---------- */
+const utcDay = () => new Date().toISOString().slice(0, 10);   // Zenyo Cloud's daily allowance resets at midnight UTC
+function limitCard(kind, row) {
+  const why = {
+    "limit": ["⏳", "Zenyo Cloud is out of free messages for today", "It resets tomorrow. Zenyo Pro can answer this right now, on your device."],
+    "photo-limit": ["📸", "You've used today's photo questions", "Zenyo Cloud reads 15 photos a day per person. Zenyo Pro can read this one on your device, or you can type the problem out."],
+    "offline": ["📡", "Zenyo Cloud can't be reached right now", "No internet, or the server is down. Zenyo Pro runs on your device, so it works offline once it's downloaded."],
+  }[kind === "limit" || kind === "photo-limit" ? kind : "offline"];
+  const card = document.createElement("div"); card.className = "limitcard";
+  const h = document.createElement("div"); h.className = "lc-h";
+  const ic = document.createElement("span"); ic.className = "lc-ic"; ic.textContent = why[0]; ic.setAttribute("aria-hidden", "true");
+  const t = document.createElement("b"); t.textContent = why[1]; h.append(ic, t);
+  const p = document.createElement("p"); p.textContent = why[2];
+  const act = document.createElement("div"); act.className = "lc-row";
+  const go = document.createElement("button"); go.className = "lc-go"; go.textContent = "Answer with Zenyo Pro";
+  const note = document.createElement("span"); note.className = "lc-note";
+  note.textContent = window.zenyoState.loaded ? "Ready on this device" : `Private · works offline · one-time ~${MODEL.size} MB download`;
+  (async () => { try { if (!window.zenyoState.loaded && (await (await caches.open(MODEL.cache)).keys()).length === MODEL.parts.length) note.textContent = "Already on this device · starts in a few seconds"; } catch {} })();
+  act.append(go, note);
+  const prog = document.createElement("div"); prog.className = "lc-prog"; prog.hidden = true;
+  const bar = document.createElement("div"); bar.className = "lc-bar"; const fill = document.createElement("div"); bar.append(fill);
+  const lab = document.createElement("span"); prog.append(bar, lab);
+  card.append(h, p, act, prog);
+  go.addEventListener("click", () => {
+    const asked = convo[convo.length - 1];
+    if (!asked || asked.role !== "user") return;
+    go.disabled = true; act.hidden = true; prog.hidden = false;
+    if (kind === "limit" || kind === "photo-limit") { store.set("zenyo.autoPro", "1"); store.set("zenyo.cloudOffDay", utcDay()); }
+    setMode("device");
+    const tick = setInterval(() => {
+      const st = window.zenyoState;
+      if (st.error) { clearInterval(tick); lab.textContent = st.error; lab.className = "err"; return; }
+      const pr = st.loaded ? 1 : st.progress || 0;
+      fill.style.width = Math.round(pr * 100) + "%";
+      lab.textContent = st.loaded ? "Zenyo Pro is ready" : pr >= 1 ? "Starting Zenyo Pro…" : pr > 0 ? `Downloading Zenyo Pro · ${Math.round(pr * 100)}% · first time only` : "Getting Zenyo Pro ready…";
+      if (st.loaded && !busy) { clearInterval(tick); row && row.remove(); talk("", asked); }   // answer the same question
+    }, 250);
+  });
+  return card;
+}
+function showProNote() {   // a small line above the message box while Zenyo Pro is covering for Zenyo Cloud
+  const n = $("#proNote"); if (!n) return;
+  n.hidden = !(mode === "device" && store.get("zenyo.autoPro") === "1");
+}
+
+async function talk(text, again) {
+  text = (text || "").trim();
   if (busy || (mode === "device" && !window.zenyoState.loaded) || attachments.some(reading)) return;
-  const cloudPhoto = mode === "cloud" ? attachments.find((a) => a.image) : null;   // Zenyo Cloud looks at the photo itself
-  const ready = attachments.filter((a) => a.text || a === cloudPhoto);
-  if (!text && !ready.length) return;
-  const shown = text || "Solve this and explain the steps.";
-  let full = shown;
-  for (const a of ready) if (a.text) full = `${a.kind === "image" ? `Text from a photo (${a.name})` : `File: ${a.name}`}:\n${a.text.slice(0, 1800)}\n\n` + full;
-  $("#hero").hidden = true;
-  convo.push({ role: "user", content: full, shown, ...(cloudPhoto ? { image: cloudPhoto.image } : {}) });
-  userMsg(shown, ready);
-  attachments = []; drawAttachments();
-  input.value = ""; autosize();
+  // again = a question that's already in the chat (asking it again with Zenyo Pro after Zenyo Cloud couldn't answer)
+  const cloudPhoto = again ? (mode === "cloud" && again.image ? again : null) : mode === "cloud" ? attachments.find((a) => a.image) : null;   // Zenyo Cloud looks at the photo itself
+  const ready = again ? [] : attachments.filter((a) => a.text || a === cloudPhoto);
+  if (!again && !text && !ready.length) return;
+  const shown = again ? again.shown || again.content : text || "Solve this and explain the steps.";
+  let full = again ? again.content : shown;
+  if (!again) {
+    for (const a of ready) if (a.text) full = `${a.kind === "image" ? `Text from a photo (${a.name})` : `File: ${a.name}`}:\n${a.text.slice(0, 1800)}\n\n` + full;
+    $("#hero").hidden = true;
+    convo.push({ role: "user", content: full, shown, ...(cloudPhoto ? { image: cloudPhoto.image } : {}) });
+    userMsg(shown, ready);
+    attachments = []; drawAttachments();
+    input.value = ""; autosize();
+  }
   const { row, body } = zenyoMsg();
   busy = true; setSendIcon("stop"); window.zenyoState.mode = "thinking";
   let reply = "";
@@ -1478,7 +1552,7 @@ async function talk(text) {
   // Multiple choice? Solve just the question part, then see which choice the exact answer matches.
   const mc = findChoices(full);
   // a photo in Cloud mode: the scanner's text may be misread, so let Zenyo Cloud read the photo instead of solving a misread problem exactly
-  const checked = cloudPhoto && ready.some((a) => a.kind === "image") ? [] : await checkMath(mc ? mc.stem : full);
+  const checked = cloudPhoto && (again || ready.some((a) => a.kind === "image")) ? [] : await checkMath(mc ? mc.stem : full);
   if (mc && checked.length === 1) {
     const c = checked[0], pick = matchChoice(c.answer, mc.opts);
     c.simple = false;
@@ -1572,16 +1646,7 @@ async function talk(text) {
       return said;
     } catch (e) {
       if (e && e.name === "AbortError") { render(el, said.trim(), false); return said.trim(); }
-      el.replaceChildren();
-      const p = document.createElement("p");
-      p.textContent = e.message === "photo-limit"
-        ? "You've used today's photo questions on Zenyo Cloud (15 a day; it resets tomorrow). You can type the problem instead, or use on-device Zenyo Pro, which reads photos on your device."
-        : e.message === "limit"
-        ? `Zenyo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Zenyo Pro: it downloads once (about ${MODEL.size} MB) and then runs right on your device.`
-        : "Zenyo Cloud can't be reached right now (no internet, or the server is down). You can use on-device Zenyo Pro instead.";
-      const b = document.createElement("button"); b.className = "cloudbtn"; b.textContent = "Use on-device Zenyo Pro";
-      b.addEventListener("click", () => { b.disabled = true; setMode("device"); });
-      el.append(p, b);
+      el.replaceChildren(limitCard(e.message, el.closest(".zenyo")));
       return "";
     }
   }
