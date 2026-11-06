@@ -761,7 +761,12 @@ function cloudMessages() {   // same notes + multiple-choice instruction, as cha
   // the notes are Zenyo's own study notes, not something the student gave: use them quietly
   const s = sys && sys.replace(/^You are \w+\. Here are class notes that match the student's question\./, "These are your own reference notes for this question (the student can't see them, so never say \"your notes\" or \"the notes\").")
     .replace(/^You are \w+\.\s*/, "");   // the server sets who Zenyo is
-  const msgs = (s ? [{ role: "system", content: s }] : []).concat(keep);
+  // answer style: straight to the answer, unless the student asks for an explanation
+  const style = "Answer style (this overrides the step-by-step rule above): give the answer right away and keep it short, 1 to 3 sentences. " +
+    "No greeting or intro (don't start with \"Hey\" or \"Great question\"), and no offer to help more at the end. " +
+    "For math, give the final answer with at most one short line of work. For writing or code, give just what was asked for. " +
+    "Only explain step by step if the student asks you to explain, show the steps or says why or how.";
+  const msgs = [{ role: "system", content: style + (s ? "\n\n" + s : "") }].concat(keep);
   const last = convo[convo.length - 1];   // the newest question carries its photo, if it has one
   if (last && last.role === "user" && last.image && msgs.length && msgs[msgs.length - 1].role === "user")
     msgs[msgs.length - 1] = { role: "user", content: [{ type: "text", text: msgs[msgs.length - 1].content }, { type: "image_url", image_url: { url: last.image } }] };
