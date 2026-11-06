@@ -596,7 +596,7 @@ function inline(parent, text) {
     if (!part) return;
     if (i % 2) { const c = document.createElement("code"); c.textContent = part; parent.append(c); return; }
     // light markdown: "## Heading" lines and **bold** become bold text
-    part = part.replace(/^#{1,6}\s+(.+)$/gm, "**$1**");
+    part = part.replace(/^#{1,6}\s+(.+)$/gm, "**$1**").replace(/^\s*(?:\*\*\*+|---+|___+)\s*$/gm, "");   // drop *** / --- divider lines
     part.split(/\*\*([^\n]+?)\*\*/).forEach((bit, j) => {
       if (!bit) return;
       if (j % 2) { const b = document.createElement("b"); b.append(chem(bit)); parent.append(b); } else parent.append(chem(bit));
