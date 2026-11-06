@@ -301,7 +301,7 @@ try { for (const st of [localStorage, sessionStorage]) for (const k of Object.ke
       <button class="pick" id="modeBtn" aria-haspopup="true" aria-expanded="false">Zenyo</button>
       <div class="menu" id="modeMenu" role="menu" hidden>
         <button role="menuitemradio" data-mode="cloud"><div><b>Zenyo Cloud</b><span>Smartest. Runs on a server, nothing to download. Daily limit.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
-        <button role="menuitemradio" data-mode="device"><div><b>Zenyo Pro</b><span>Private. Runs on your device, works offline. One-time ~400 MB download.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
+        <button role="menuitemradio" data-mode="device"><div><b>Zenyo Pro</b><span>Private. Runs on your device, works offline. One-time <span class="dlsize">~400 MB</span> download.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
       </div>
     </div>
     <div class="mark" aria-hidden="true"></div>
@@ -319,8 +319,8 @@ try { for (const st of [localStorage, sessionStorage]) for (const k of Object.ke
         <h1>What are we working on?</h1>
         <p class="lede">A free AI made by a student, for students. Zenyo runs entirely in your browser, so your messages, files and photos never leave your device.</p>
         <ul class="facts">
-          <li><b>0.6B</b> parameters</li>
-          <li><b>67/70</b> on our school test</li>
+          <li><b id="factSize">0.6B</b> parameters</li>
+          <li><b id="factScore">67/70</b> on our school test</li>
           <li><b>100%</b> on-device</li>
           <li><b>Free</b> &amp; private</li>
         </ul>
@@ -419,16 +419,27 @@ try { for (const st of [localStorage, sessionStorage]) for (const k of Object.ke
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/index.js";
 
 const VERSION = "Pro";
-// The on-device model was trained back when it was called "Lumo": its prompts use that name, and its replies are shown as Zenyo.
-const TRAINED_NAME = "Lumo";
-const rebrand = (t) => TRAINED_NAME === "Zenyo" ? t : t.replace(new RegExp("\\b" + TRAINED_NAME + "\\b", "g"), "Zenyo");
-// Zenyo Pro = Qwen3-0.6B fine-tuned on Zenyo's personality + school data. Split into <100 MB pieces for GitHub.
-// v2 adds 22 high school classes + ~9,400 checked math problems; v3 adds a 668-question biology course built on the site notes. Phones get 4-bit (341 MB), computers 5-bit (397 MB).
 const PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-const [QNAME, QPARTS] = PHONE ? ["q4", 4] : ["q5", 5];
-const MODEL_URLS = Array.from({ length: QPARTS }, (_, i) =>
-  new URL(`zenyo-pro-v3-${QNAME}-${String(i + 1).padStart(5, "0")}-of-${String(QPARTS).padStart(5, "0")}.gguf`, location.href).href);
-const STOP = [151645, 151643]; // <|im_end|>, <|endoftext|>
+// On-device models (Zenyo Pro). Files are split into pieces; "name" is what the model was trained to call itself.
+//  v3: Qwen3-0.6B fine-tune, trained back when the AI was called Lumo (its prompts use that name; replies are shown as Zenyo).
+//      Phones get 4-bit (341 MB), computers 5-bit (397 MB), served from this site.
+//  v6: MiniCPM5-1B fine-tune, the first model trained as Zenyo. 4-bit, 613 MB. Its word table is 113 MB, too big for GitHub's
+//      100 MB file limit, so it's served from MODEL_HOST (e.g. Hugging Face).
+const MODELS = {
+  v3: { name: "Lumo", params: "0.6B", score: "64/70", size: PHONE ? 341 : 397, stop: [151645, 151643], files: (PHONE ? ["q4", 4] : ["q5", 5]).reduce((q, n) => Array.from({ length: n }, (_, i) => `zenyo-pro-v3-${q}-${String(i + 1).padStart(5, "0")}-of-${String(n).padStart(5, "0")}.gguf`)) },
+  v6: { name: "Zenyo", params: "1B", score: "65/70", size: 613, stop: [130073, 1], files: Array.from({ length: 8 }, (_, i) => `zenyo-pro-v6-q4-${String(i + 1).padStart(5, "0")}-of-00008.gguf`) },
+};
+const MODEL_HOST = "";   // where v6's files live, e.g. "https://huggingface.co/<name>/zenyo-pro/resolve/main/" (empty = not set up yet)
+const pickModel = (() => { try { return localStorage.getItem("zenyo.model"); } catch { return null; } })();   // testing override
+const MODEL_ID = pickModel && MODELS[pickModel] ? pickModel : (MODEL_HOST ? "v6" : "v3");
+const MODEL = MODELS[MODEL_ID];
+const modelBase = (() => { try { return localStorage.getItem("zenyo.modelBase"); } catch { return null; } })() || (MODEL_ID === "v6" ? MODEL_HOST : "");
+const MODEL_URLS = MODEL.files.map((f) => new URL(modelBase + f, location.href).href);
+const STOP = MODEL.stop; // <|im_end|> and the end-of-text token for this model
+const TRAINED_NAME = MODEL.name;
+const rebrand = (t) => TRAINED_NAME === "Zenyo" ? t : t.replace(new RegExp("\\b" + TRAINED_NAME + "\\b", "g"), "Zenyo");
+document.getElementById("factSize").textContent = MODEL.params; document.getElementById("factScore").textContent = MODEL.score;
+for (const el of document.querySelectorAll(".dlsize")) el.textContent = "~" + MODEL.size + " MB";
 const CDN = "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/";
 const $ = (s) => document.querySelector(s);
 const thread = $("#thread"), input = $("#input"), send = $("#send"), main = $("#main");
@@ -1537,7 +1548,7 @@ async function talk(text) {
       p.textContent = e.message === "photo-limit"
         ? "You've used today's photo questions on Zenyo Cloud (15 a day; it resets tomorrow). You can type the problem instead, or use on-device Zenyo Pro, which reads photos on your device."
         : e.message === "limit"
-        ? "Zenyo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Zenyo Pro: it downloads once (about 400 MB) and then runs right on your device."
+        ? `Zenyo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Zenyo Pro: it downloads once (about ${MODEL.size} MB) and then runs right on your device.`
         : "Zenyo Cloud can't be reached right now (no internet, or the server is down). You can use on-device Zenyo Pro instead.";
       const b = document.createElement("button"); b.className = "cloudbtn"; b.textContent = "Use on-device Zenyo Pro";
       b.addEventListener("click", () => { b.disabled = true; setMode("device"); });
