@@ -575,6 +575,8 @@ function normalizeMath(s) {
 }
 function findMath(raw) {
   raw = raw.replace(/^\s*(?:\(?\d{1,2}[).:]|[a-h][).])\s+/i, ""); // drop worksheet numbering like "1)" or "b."
+  // not math: tire sizes (P215/65R15), dates (11/5/2026), screw and wrench sizes (1/4-20, 3/8")
+  if (/\b[A-Z]{0,2}\d{3}\/\d{2}\s?Z?R\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d+\/\d+\s*(?:-\d+|"|in\b|inch)/i.test(raw)) return null;
   const line = raw.trim();
   const text = normalizeMath(raw);
   // slope between two points: (2, 5) and (6, 13)
