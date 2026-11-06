@@ -421,20 +421,12 @@ import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/in
 const VERSION = "Pro";
 const PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 // On-device models (Zenyo Pro). Files are split into pieces; "name" is what the model was trained to call itself.
-//  v3: Qwen3-0.6B fine-tune, trained back when the AI was called Lumo (its prompts use that name; replies are shown as Zenyo).
-//      Phones get 4-bit (341 MB), computers 5-bit (397 MB), served from this site.
-//  v6: MiniCPM5-1B fine-tune, the first model trained as Zenyo. 4-bit, 613 MB. Its word table is 113 MB, too big for GitHub's
-//      100 MB file limit, so it's served from MODEL_HOST (e.g. Hugging Face).
-const MODELS = {
-  v3: { name: "Lumo", params: "0.6B", score: "64/70", size: PHONE ? 341 : 397, stop: [151645, 151643], files: (PHONE ? ["q4", 4] : ["q5", 5]).reduce((q, n) => Array.from({ length: n }, (_, i) => `zenyo-pro-v3-${q}-${String(i + 1).padStart(5, "0")}-of-${String(n).padStart(5, "0")}.gguf`)) },
-  v6: { name: "Zenyo", params: "1B", score: "65/70", size: 613, stop: [130073, 1], files: Array.from({ length: 8 }, (_, i) => `zenyo-pro-v6-q4-${String(i + 1).padStart(5, "0")}-of-00008.gguf`) },
-};
-const MODEL_HOST = "";   // where v6's files live, e.g. "https://huggingface.co/<name>/zenyo-pro/resolve/main/" (empty = not set up yet)
-const pickModel = (() => { try { return localStorage.getItem("zenyo.model"); } catch { return null; } })();   // testing override
-const MODEL_ID = pickModel && MODELS[pickModel] ? pickModel : (MODEL_HOST ? "v6" : "v3");
-const MODEL = MODELS[MODEL_ID];
-const modelBase = (() => { try { return localStorage.getItem("zenyo.modelBase"); } catch { return null; } })() || (MODEL_ID === "v6" ? MODEL_HOST : "");
-const MODEL_URLS = MODEL.files.map((f) => new URL(modelBase + f, location.href).href);
+// Zenyo Pro v6 = MiniCPM5-1B fine-tuned as Zenyo (the first model trained under the new name). One 4-bit GGUF, 613 MB.
+// Its 113 MB word table is over GitHub's 100 MB-per-file limit, and a GGUF can't split a table across files, so the file is
+// stored here as 7 plain pieces (90 MB each). The browser downloads them, keeps them in its cache, and glues them back together.
+const MODEL = { name: "Zenyo", params: "1B", score: "65/70", size: 613, bytes: 613241152, stop: [130073, 1], cache: "zenyo-model-v6",
+                parts: Array.from({ length: 7 }, (_, i) => `zenyo-pro-v6-q4.part${String(i + 1).padStart(2, "0")}`) };
+const MODEL_URLS = MODEL.parts.map((f) => new URL(f, location.href).href);
 const STOP = MODEL.stop; // <|im_end|> and the end-of-text token for this model
 const TRAINED_NAME = MODEL.name;
 const rebrand = (t) => TRAINED_NAME === "Zenyo" ? t : t.replace(new RegExp("\\b" + TRAINED_NAME + "\\b", "g"), "Zenyo");
@@ -547,16 +539,50 @@ function status(text, isErr) {
 }
 
 function boot() { return (booting ||= bootDevice().finally(() => { booting = null; })); }
+/** Get the model's 7 pieces (from the browser's cache if they're already there) and glue them into one file. */
+async function downloadModel(onProgress) {
+  let cache = null;
+  try { cache = await caches.open(MODEL.cache); } catch {}
+  try { for (const k of await caches.keys()) if (k.startsWith("zenyo-model-") && k !== MODEL.cache) await caches.delete(k); } catch {}   // old versions
+  let got = 0;
+  const pieces = [];
+  for (const url of MODEL_URLS) {
+    let res = cache ? await cache.match(url) : null;
+    if (!res) {
+      const net = await fetch(url);
+      if (!net.ok || !net.body) throw new Error(`download failed (${net.status})`);
+      const counted = net.body.pipeThrough(new TransformStream({ transform(c, ctrl) { got += c.byteLength; onProgress(got); ctrl.enqueue(c); } }));
+      const piece = new Response(counted, { headers: { "Content-Type": "application/octet-stream" } });
+      if (cache) {
+        try { await cache.put(url, piece); res = await cache.match(url); }   // saved to disk, so the next visit is instant
+        catch { cache = null; }
+      }
+      if (!res) {   // no cache (private window / full storage): keep the piece in memory instead
+        res = cache === null && piece.bodyUsed ? await fetch(url) : piece;
+      }
+      pieces.push(await res.blob());
+    } else {
+      const b = await res.blob(); got += b.size; onProgress(got); pieces.push(b);
+    }
+  }
+  const file = new File(pieces, "zenyo-pro-v6-q4.gguf", { type: "application/octet-stream" });
+  if (file.size !== MODEL.bytes) {
+    try { await caches.delete(MODEL.cache); } catch {}
+    throw new Error("the download didn't finish. Reload the page to try again");
+  }
+  return file;
+}
 async function bootDevice() {
   try {
     wllama = wllama || new Wllama({ "single-thread/wllama.wasm": CDN + "single-thread/wllama.wasm", "multi-thread/wllama.wasm": CDN + "multi-thread/wllama.wasm" });
-    await wllama.loadModelFromUrl(MODEL_URLS, {
-      n_ctx: 4096,
-      progressCallback: ({ loaded, total }) => {
-        const p = total ? loaded / total : 0; window.zenyoState.progress = p;
-        status(`Downloading Zenyo · ${Math.round(p * 100)}% · ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB (first visit only)`);
-      },
+    // free the space the old model (v3) used in wllama's own cache
+    if (store.get("zenyo.oldModelCleared") !== "1") { try { await wllama.cacheManager?.clear?.(); } catch {} store.set("zenyo.oldModelCleared", "1"); }
+    const file = await downloadModel((n) => {
+      const p = n / MODEL.bytes; window.zenyoState.progress = p;
+      status(`Downloading Zenyo · ${Math.round(p * 100)}% · ${(n / 1e6).toFixed(0)} of ${(MODEL.bytes / 1e6).toFixed(0)} MB (first visit only)`);
     });
+    status("Starting Zenyo…");
+    await wllama.loadModel([file], { n_ctx: 4096 });
     window.zenyoState.mode = "idle"; window.zenyoState.loaded = true;
     if (mode === "device") enableInput();
   } catch (e) {
