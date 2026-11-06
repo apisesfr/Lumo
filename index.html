@@ -46,6 +46,8 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 .top .new{white-space:nowrap}
 .cloudbtn{margin-top:10px;padding:8px 13px;border-radius:12px;border:1px solid rgba(255,189,89,.4);color:var(--cream);background:rgba(255,189,89,.08);font-size:14px;cursor:pointer}
 .cloudbtn:disabled{opacity:.5;cursor:default}
+.thinktag{color:var(--mist);font-style:italic;animation:thinkpulse 1.6s ease-in-out infinite}
+@keyframes thinkpulse{50%{opacity:.45}}
 .top .new svg{width:16px;height:16px}
 
 /* scroll area */
@@ -340,7 +342,7 @@ function setMode(m) {
 $("#modeBtn").addEventListener("click", () => setMode(mode === "cloud" ? "device" : "cloud"));
 
 /** Stream a reply from Lumo Cloud. Calls onText(full text so far). Throws Error("limit") / Error("offline"). */
-async function cloudChat(messages, signal, onText) {
+async function cloudChat(messages, signal, onText, onThink) {
   let res;
   try {
     res = await fetch(CLOUD_URL + "/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages }), signal });
@@ -362,8 +364,10 @@ async function cloudChat(messages, signal, onText) {
       try {
         const j = JSON.parse(d);
         if (j.error) throw new Error(j.error === "limit" ? "limit" : "offline");
-        const piece = j.response ?? j.choices?.[0]?.delta?.content ?? "";
+        const delta = j.choices?.[0]?.delta || {};
+        const piece = j.response ?? delta.content ?? "";
         if (piece) { text += piece; onText(text); }
+        else if (!text && (delta.reasoning_content || delta.reasoning) && onThink) onThink();   // the model thinks before it answers
       } catch (e) { if (e.message === "limit" || e.message === "offline") throw e; }
     }
   }
@@ -1337,7 +1341,12 @@ async function talk(text) {
       said = await cloudChat(cloudMessages(), ctrl.signal, (t) => {
         said = t.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, ""); render(el, said, true);
         if (main.scrollHeight - main.scrollTop - main.clientHeight < 160) scrollDown();
+      }, () => {
+        if (el.dataset.thinking) return;
+        el.dataset.thinking = "1"; el.replaceChildren();
+        const t = document.createElement("span"); t.className = "thinktag"; t.textContent = "Thinking it through…"; el.append(t);
       });
+      delete el.dataset.thinking;
       said = said.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "").trim();
       render(el, said, false);
       return said;
