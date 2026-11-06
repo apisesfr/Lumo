@@ -18,7 +18,7 @@ Saved chats stay only in your own browser.
 ## On-device model
 Zenyo Pro is a fine-tune of [MiniCPM5-1B](https://huggingface.co/openbmb/MiniCPM5-1B) on Zenyo's personality, school subjects, checked math, science, 69 school and college subjects, class notes, facts and memory practice. It scores 50.7% on MMLU and 63.5% on GSM8K math.
 
-The model is one 4-bit GGUF file (613 MB). Its word table alone is 113 MB, over GitHub's 100 MB-per-file limit, so the file is stored as 7 plain pieces (`zenyo-pro-v6-q4.part01` to `part07`). The browser downloads them once, keeps them in its cache, and joins them back together before loading. Photos in on-device mode are read with [SmolVLM-256M](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) on computers, or [Tesseract.js](https://github.com/naptha/tesseract.js) with shadow cleanup on phones.
+The model is one 4-bit GGUF file (613 MB). Its word table alone is 113 MB, over GitHub's 100 MB-per-file limit, so the file is stored as 7 plain pieces (`zenyo-pro-v6-q4.part01` to `part07`) on this repo's `models` branch. The browser downloads them once, keeps them in its cache, and joins them back together before loading. Photos in on-device mode are read with [SmolVLM-256M](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) on computers, or [Tesseract.js](https://github.com/naptha/tesseract.js) with shadow cleanup on phones.
 
 ## Credits and licenses
 - On-device base model: **MiniCPM5-1B** by OpenBMB, licensed under the Apache License 2.0 (see `LICENSE-MiniCPM5.txt`). Zenyo is not made or endorsed by OpenBMB.

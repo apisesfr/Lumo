@@ -426,7 +426,10 @@ const PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (n
 // stored here as 7 plain pieces (90 MB each). The browser downloads them, keeps them in its cache, and glues them back together.
 const MODEL = { name: "Zenyo", params: "1B", score: "65/70", size: 613, bytes: 613241152, stop: [130073, 1], cache: "zenyo-model-v6",
                 parts: Array.from({ length: 7 }, (_, i) => `zenyo-pro-v6-q4.part${String(i + 1).padStart(2, "0")}`) };
-const MODEL_URLS = MODEL.parts.map((f) => new URL(f, location.href).href);
+// The pieces live on this repo's "models" branch (served by GitHub's raw file server), not in the website itself:
+// GitHub Pages times out publishing a 600+ MB site.
+const MODEL_BASE = "https://raw.githubusercontent.com/zenyoai/zenyoai.github.io/models/";
+const MODEL_URLS = MODEL.parts.map((f) => MODEL_BASE + f);
 const STOP = MODEL.stop; // <|im_end|> and the end-of-text token for this model
 const TRAINED_NAME = MODEL.name;
 const rebrand = (t) => TRAINED_NAME === "Zenyo" ? t : t.replace(new RegExp("\\b" + TRAINED_NAME + "\\b", "g"), "Zenyo");
