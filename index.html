@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#07080c">
-<meta name="description" content="Lumo is a tiny AI trained from scratch on one home gaming PC. He runs right in your browser, so your chats stay on your device.">
-<meta property="og:title" content="Lumo">
+<meta name="description" content="Zenyo is a free AI homework helper made by a student, for students. Smart answers, photo help, and a private on-device mode.">
+<meta property="og:title" content="Zenyo">
 <meta property="og:description" content="A free AI for students, made by apisesfr. Runs right in your browser, so your chats stay private.">
 <meta name="author" content="apisesfr">
-<title>Lumo</title>
+<title>Zenyo</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.4' cy='.38' r='.6'%3E%3Cstop offset='0' stop-color='%23fff7e0'/%3E%3Cstop offset='.35' stop-color='%23ffc35c'/%3E%3Cstop offset='1' stop-color='%23ff7a3d'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='24' fill='url(%23g)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Lantern at night: ink-dark sky, one warm light (Lumo), cool moonlight for you. */
+/* Lantern at night: ink-dark sky, one warm light (Zenyo), cool moonlight for you. */
 :root{
   --ink:#07080c; --ink2:#0e1118; --ink3:#151a24; --line:rgba(255,236,200,.09); --line2:rgba(255,236,200,.16);
   --cream:#f4eee2; --mist:#a7a294; --dim:#6f6b62;
@@ -275,7 +275,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 <script>try{if(matchMedia("(max-width:820px)").matches||localStorage.getItem("lumo.side")==="closed")document.getElementById("shell").classList.add("closed")}catch(e){}</script>
 <aside class="side" id="side" aria-label="Chats">
   <div class="side-top">
-    <div class="mark" aria-hidden="true"></div><b>Lumo</b>
+    <div class="mark" aria-hidden="true"></div><b>Zenyo</b>
     <button class="iconbtn" id="sideClose" title="Close sidebar" aria-label="Close sidebar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>
     </button>
@@ -294,14 +294,14 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>
     </button>
     <div class="picker">
-      <button class="pick" id="modeBtn" aria-haspopup="true" aria-expanded="false">Lumo</button>
+      <button class="pick" id="modeBtn" aria-haspopup="true" aria-expanded="false">Zenyo</button>
       <div class="menu" id="modeMenu" role="menu" hidden>
-        <button role="menuitemradio" data-mode="cloud"><div><b>Lumo Cloud</b><span>Smartest. Runs on a server, nothing to download. Daily limit.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
-        <button role="menuitemradio" data-mode="device"><div><b>Lumo Pro</b><span>Private. Runs on your device, works offline. One-time ~400 MB download.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
+        <button role="menuitemradio" data-mode="cloud"><div><b>Zenyo Cloud</b><span>Smartest. Runs on a server, nothing to download. Daily limit.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
+        <button role="menuitemradio" data-mode="device"><div><b>Zenyo Pro</b><span>Private. Runs on your device, works offline. One-time ~400 MB download.</span></div><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
       </div>
     </div>
     <div class="mark" aria-hidden="true"></div>
-    <div class="brand">Lumo</div>
+    <div class="brand">Zenyo</div>
     <span class="tag" id="ver">v1.1</span>
     <button class="new" id="newChat" title="New chat" aria-label="New chat">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>New chat
@@ -313,19 +313,19 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
       <section class="hero" id="hero">
         <div class="orbwrap"><canvas id="orb" width="368" height="368" aria-hidden="true"></canvas></div>
         <h1>What are we working on?</h1>
-        <p class="lede">A free AI made by a student, for students. Lumo runs entirely in your browser, so your messages, files and photos never leave your device.</p>
+        <p class="lede">A free AI made by a student, for students. Zenyo runs entirely in your browser, so your messages, files and photos never leave your device.</p>
         <ul class="facts">
           <li><b>0.6B</b> parameters</li>
           <li><b>67/70</b> on our school test</li>
           <li><b>100%</b> on-device</li>
           <li><b>Free</b> &amp; private</li>
         </ul>
-        <div class="status" id="status" role="status" aria-live="polite">Waking Lumo up…</div>
+        <div class="status" id="status" role="status" aria-live="polite">Waking Zenyo up…</div>
         <div class="ideas" id="ideas" hidden>
           <button class="idea"><small>Code</small><span>Write a Python function that checks if a number is prime</span></button>
           <button class="idea"><small>Math</small><span>What is 12 * 11?</span></button>
           <button class="idea"><small>Writing</small><span>Tell me a short story about a dragon</span></button>
-          <button class="idea"><small>Chat</small><span>Hi Lumo, what can you help with?</span></button>
+          <button class="idea"><small>Chat</small><span>Hi Zenyo, what can you help with?</span></button>
         </div>
       </section>
       <div class="thread" id="thread" aria-live="polite"></div>
@@ -343,12 +343,12 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
       </button>
       <input type="file" id="fileIn" hidden multiple accept="image/*,.txt,.md,.py,.js,.ts,.html,.css,.json,.csv,.c,.cpp,.h,.java,.cs,.lua,.luau,.rs,.go">
       <input type="file" id="camIn" hidden accept="image/*" capture="environment">
-      <textarea id="input" rows="1" placeholder="Message Lumo" aria-label="Message Lumo" disabled></textarea>
+      <textarea id="input" rows="1" placeholder="Message Zenyo" aria-label="Message Zenyo" disabled></textarea>
       <button class="go" id="send" aria-label="Send" disabled>
         <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>
       </button>
     </div>
-    <p class="fine">Lumo can make mistakes. Check important information. Math marked "Checked answer" is solved exactly. Made by <a href="https://github.com/apisesfr" target="_blank" rel="noopener">apisesfr</a>.</p>
+    <p class="fine">Zenyo can make mistakes. Check important information. Math marked "Checked answer" is solved exactly. Made by <a href="https://github.com/apisesfr" target="_blank" rel="noopener">apisesfr</a>.</p>
   </footer>
 </div>
 </div>
@@ -357,7 +357,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 <script src="notes-auto.js"></script>
 <script src="notes-games.js"></script>
 <script>
-/* ---------- night sky + Lumo's orb (canvas) ---------- */
+/* ---------- night sky + Zenyo's orb (canvas) ---------- */
 (() => {
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const sky = document.getElementById("sky"), sx = sky.getContext("2d");
@@ -415,7 +415,10 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@2.3.1/esm/index.js";
 
 const VERSION = "Pro";
-// Lumo Pro = Qwen3-0.6B fine-tuned on Lumo's personality + school data. Split into <100 MB pieces for GitHub.
+// The on-device model was trained back when it was called "Lumo": its prompts use that name, and its replies are shown as Zenyo.
+const TRAINED_NAME = "Lumo";
+const rebrand = (t) => TRAINED_NAME === "Zenyo" ? t : t.replace(new RegExp("\\b" + TRAINED_NAME + "\\b", "g"), "Zenyo");
+// Zenyo Pro = Qwen3-0.6B fine-tuned on Zenyo's personality + school data. Split into <100 MB pieces for GitHub.
 // v2 adds 22 high school classes + ~9,400 checked math problems; v3 adds a 668-question biology course built on the site notes. Phones get 4-bit (341 MB), computers 5-bit (397 MB).
 const PHONE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const [QNAME, QPARTS] = PHONE ? ["q4", 4] : ["q5", 5];
@@ -437,23 +440,23 @@ const svgEl = (html) => { const t = document.createElement("template"); t.innerH
 $("#ver").textContent = /^\d/.test(VERSION) ? "v" + VERSION : VERSION;
 let wllama, convo = [], busy = false, stop = null;
 
-/* ---------- Lumo Cloud: the smart mode, answered by Lumo's own server, with a daily limit.
-   When it's out of free messages or offline, the site offers the on-device Lumo Pro instead. ---------- */
+/* ---------- Zenyo Cloud: the smart mode, answered by Zenyo's own server, with a daily limit.
+   When it's out of free messages or offline, the site offers the on-device Zenyo Pro instead. ---------- */
 const CLOUD_DEFAULT = "https://lumo-cloud.elithornhill.workers.dev";   // the Worker's URL (empty = cloud mode off)
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const CLOUD_URL = (store.get("lumo.cloudUrl") || CLOUD_DEFAULT).replace(/\/+$/, "");
 let mode = CLOUD_URL && store.get("lumo.mode") !== "device" ? "cloud" : "device";
 let booting = null;
 const LEDE = {
-  device: "A free AI made by a student, for students. Lumo runs entirely in your browser, so your messages, files and photos never leave your device.",
-  cloud: "A free AI made by a student, for students. Lumo Cloud uses a much bigger AI on a server: smarter answers and nothing to download. Your messages are sent to Cloudflare to answer them, so don't share personal info. Switch to On-device for full privacy.",
+  device: "A free AI made by a student, for students. Zenyo runs entirely in your browser, so your messages, files and photos never leave your device.",
+  cloud: "A free AI made by a student, for students. Zenyo Cloud uses a much bigger AI on a server: smarter answers and nothing to download. Your messages are sent to Cloudflare to answer them, so don't share personal info. Switch to On-device for full privacy.",
 };
 function showMode() {
   const b = $("#modeBtn");
-  b.replaceChildren(document.createTextNode("Lumo "));
+  b.replaceChildren(document.createTextNode("Zenyo "));
   const s = document.createElement("small"); s.textContent = mode === "cloud" ? "Cloud" : "Pro"; b.append(s);
   if (CLOUD_URL) b.append(svgEl('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'));
-  b.title = mode === "cloud" ? "Lumo Cloud: the smart mode, runs on a server" : "Lumo Pro: runs privately on your device";
+  b.title = mode === "cloud" ? "Zenyo Cloud: the smart mode, runs on a server" : "Zenyo Pro: runs privately on your device";
   for (const it of document.querySelectorAll("#modeMenu button")) { it.classList.toggle("on", it.dataset.mode === mode); it.setAttribute("aria-checked", it.dataset.mode === mode); }
   $(".lede").textContent = LEDE[mode];
   for (const li of document.querySelectorAll(".facts li")) li.hidden = mode === "cloud";
@@ -489,7 +492,7 @@ $("#scrim").addEventListener("click", () => side(false));
 new MutationObserver(() => $("#app").classList.toggle("fresh", !$("#hero").hidden)).observe($("#hero"), { attributes: true, attributeFilter: ["hidden"] });
 $("#app").classList.toggle("fresh", !$("#hero").hidden);
 
-/** Stream a reply from Lumo Cloud. Calls onText(full text so far). Throws Error("limit") / Error("offline"). */
+/** Stream a reply from Zenyo Cloud. Calls onText(full text so far). Throws Error("limit") / Error("offline"). */
 async function cloudChat(messages, signal, onText, onThink) {
   let res;
   try {
@@ -536,7 +539,7 @@ async function bootDevice() {
       n_ctx: 4096,
       progressCallback: ({ loaded, total }) => {
         const p = total ? loaded / total : 0; window.lumoState.progress = p;
-        status(`Downloading Lumo · ${Math.round(p * 100)}% · ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB (first visit only)`);
+        status(`Downloading Zenyo · ${Math.round(p * 100)}% · ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB (first visit only)`);
       },
     });
     window.lumoState.mode = "idle"; window.lumoState.loaded = true;
@@ -544,7 +547,7 @@ async function bootDevice() {
   } catch (e) {
     wllama = null;
     window.lumoState.mode = "idle";
-    status("Lumo couldn't start on this device. Try Chrome, Edge or Safari on a newer phone or laptop. (" + (e && e.message ? e.message : e) + ")", true);
+    status("Zenyo couldn't start on this device. Try Chrome, Edge or Safari on a newer phone or laptop. (" + (e && e.message ? e.message : e) + ")", true);
     console.error(e);
   }
 }
@@ -567,7 +570,7 @@ function lumoMsg() {
   const row = document.createElement("div"); row.className = "lumo thinking";
   const av = document.createElement("div"); av.className = "av";
   const col = document.createElement("div");
-  const who = document.createElement("div"); who.className = "who"; who.textContent = "Lumo";
+  const who = document.createElement("div"); who.className = "who"; who.textContent = "Zenyo";
   const body = document.createElement("div"); body.className = "body";
   const dots = document.createElement("div"); dots.className = "dots"; dots.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
   body.append(dots);
@@ -622,10 +625,10 @@ function render(body, text, live) {
   if (live) body.classList.add("caret"); else body.classList.remove("caret");
 }
 
-// How much chat Lumo keeps in mind (~2,500 tokens; the model runs with a 4,096-token window).
+// How much chat Zenyo keeps in mind (~2,500 tokens; the model runs with a 4,096-token window).
 const MEMORY_DEVICE = 9000;
 
-// ---- class notes: find the notes that match a question (simple BM25 search), so Lumo answers from facts instead of guessing ----
+// ---- class notes: find the notes that match a question (simple BM25 search), so Zenyo answers from facts instead of guessing ----
 const NOTE_STOP = new Set("a an the is are was were be been of to in on at by for with and or but if then so as it its this that these those what which who whom whose how why when where do does did can could would should will shall may might must i you he she we they me my your our their them his her about from into than also just not no yes please explain tell describe give define definition mean means meaning lumo bro yo hey hi".split(" "));
 const stem = (w) => w.replace(/ies$/, "y").replace(/sses$/, "ss").replace(/([^s])s$/, "$1").replace(/(ing|ed)$/, "").replace(/e$/, "");
 const noteWords = (t) => (t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d))).match(/[a-z0-9]+/g) || []).filter((w) => !NOTE_STOP.has(w) && w.length > 1).map(stem);
@@ -661,7 +664,7 @@ function findNotes(question, max = 2) {
     .filter((r) => { const g = isGameQ(question); return r.n.s === "games" ? g && (!NOT_GAMES.test(question) || r.sc >= 16) : !g || r.sc >= 16; })
     .sort((a, b) => b.sc - a.sc);
   window.lumoNoteScores = scored.slice(0, 4).map((r) => [r.n.t, Math.round(r.sc * 10) / 10]);
-  if (!scored.length || scored[0].sc < NOTE_MIN) return [];   // weak match: probably not a class-notes question, so don't distract Lumo
+  if (!scored.length || scored[0].sc < NOTE_MIN) return [];   // weak match: probably not a class-notes question, so don't distract Zenyo
   const subj = scored[0].n.s || "bio";                         // the second note must be from the same class
   return scored.slice(0, max).filter((r, i) => i === 0 || (r.sc > scored[0].sc * 0.55 && (r.n.s || "bio") === subj)).map((r) => r.n);
 }
@@ -685,12 +688,13 @@ function prompt() {
   const { sys, keep } = promptParts();
   let p = sys ? `<|im_start|>system\n${sys}<|im_end|>\n` : "";
   for (const m of keep) p += `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`;
-  return p + "<|im_start|>assistant\n<think>\n\n</think>\n\n"; // Lumo Pro answers directly (no "thinking" mode)
+  return p + "<|im_start|>assistant\n<think>\n\n</think>\n\n"; // Zenyo Pro answers directly (no "thinking" mode)
 }
-function cloudMessages() {   // same notes + multiple-choice instruction, as chat messages for Lumo Cloud
+function cloudMessages() {   // same notes + multiple-choice instruction, as chat messages for Zenyo Cloud
   const { sys, keep } = promptParts(16000);
-  // the notes are Lumo's own study notes, not something the student gave: use them quietly
-  const s = sys && sys.replace(/^You are Lumo\. Here are class notes that match the student's question\./, "These are your own reference notes for this question (the student can't see them, so never say \"your notes\" or \"the notes\").");
+  // the notes are Zenyo's own study notes, not something the student gave: use them quietly
+  const s = sys && sys.replace(/^You are \w+\. Here are class notes that match the student's question\./, "These are your own reference notes for this question (the student can't see them, so never say \"your notes\" or \"the notes\").")
+    .replace(/^You are \w+\.\s*/, "");   // the server sets who Zenyo is
   const msgs = (s ? [{ role: "system", content: s }] : []).concat(keep);
   const last = convo[convo.length - 1];   // the newest question carries its photo, if it has one
   if (last && last.role === "user" && last.image && msgs.length && msgs[msgs.length - 1].role === "user")
@@ -702,10 +706,10 @@ function promptParts(MEMORY_CHARS = MEMORY_DEVICE) {
   const users = convo.filter((m) => m.role === "user");
   let notes = users.length ? findNotes(users[users.length - 1].content) : [];
   if (!notes.length && users.length > 1 && users[users.length - 1].content.length < 60) notes = findNotes(users[users.length - 2].content);
-  let sys = notes.length ? "You are Lumo. Here are class notes that match the student's question. Use the facts in them so your answer is correct, and explain it in your own friendly words. If a note isn't about what they asked, ignore it. Write formulas like CO2 and C6H12O6.\n\n" + notes.map((n) => `[${n.t}] ${n.x}`).join("\n\n") : "";
-  // multiple choice: make Lumo commit to ONE letter, in the same ending it was trained on
+  let sys = notes.length ? `You are ${TRAINED_NAME}. Here are class notes that match the student's question.` + " Use the facts in them so your answer is correct, and explain it in your own friendly words. If a note isn't about what they asked, ignore it. Write formulas like CO2 and C6H12O6.\n\n" + notes.map((n) => `[${n.t}] ${n.x}`).join("\n\n") : "";
+  // multiple choice: make Zenyo commit to ONE letter, in the same ending it was trained on
   const mc = users.length ? findChoices(users[users.length - 1].content) : null;
-  if (mc) sys = (sys ? sys + "\n\n" : "You are Lumo.\n\n") + `This is a multiple choice question with choices ${mc.opts.map((o) => o.L).join(", ")}. Think about each choice, pick the ONE best answer, explain why in a few sentences, and end with the words "The answer is" followed by the letter and the choice.`;
+  if (mc) sys = (sys ? sys + "\n\n" : `You are ${TRAINED_NAME}.\n\n`) + `This is a multiple choice question with choices ${mc.opts.map((o) => o.L).join(", ")}. Think about each choice, pick the ONE best answer, explain why in a few sentences, and end with the words "The answer is" followed by the letter and the choice.`;
   window.lumoLastNotes = notes.map((n) => n.t);
   // newest messages first, until the memory is full; long old replies get trimmed so recent turns always fit
   const keep = []; let size = sys.length;
@@ -773,7 +777,7 @@ function findMath(raw) {
   return null;
 }
 const tidyNum = (s) => s.replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1");
-// Exact steps written by the math engine (Lumo 1.1 is too small to explain math reliably yet).
+// Exact steps written by the math engine (Zenyo 1.1 is too small to explain math reliably yet).
 const pretty = (e) => e.replace(/\*/g, " × ").replace(/\//g, " ÷ ").replace(/([+\-=])/g, " $1 ").replace(/\s+/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")").replace(/^ - /, "-").trim();
 const fnum = (x) => { const r = Math.round(x * 1e6) / 1e6; return Object.is(r, -0) ? "0" : String(r); };
 // a small coordinate grid (-10..10) with the line and its two key points
@@ -1044,7 +1048,7 @@ function matchChoice(answer, opts) {
   });
   return hits.length === 1 ? hits[0] : null;
 }
-// Which letter did Lumo pick? "The answer is B) ...", "answer: (c)", "choice D", or else the one choice its last lines name.
+// Which letter did Zenyo pick? "The answer is B) ...", "answer: (c)", "choice D", or else the one choice its last lines name.
 function pickedChoice(reply, mc) {
   const ok = (L) => mc.opts.find((o) => o.L === String(L).toUpperCase());
   // a lowercase letter only counts with a bracket after it ("(d)", "d)"), so "the answer is a mitochondrion" isn't read as A
@@ -1093,10 +1097,10 @@ async function checkMath(text) {
   return out;
 }
 
-/* ---------- attachments: text files are read; pictures are read by Lumo's eyes (or OCR) ---------- */
+/* ---------- attachments: text files are read; pictures are read by Zenyo's eyes (or OCR) ---------- */
 let attachments = [], ocrWorker = null;
 const loadScript = (src) => new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("couldn't load the picture reader")); document.head.append(s); });
-// Lumo's eyes: SmolVLM-256M (open, Apache-2.0) reads the photo in the browser. Falls back to plain OCR.
+// Zenyo's eyes: SmolVLM-256M (open, Apache-2.0) reads the photo in the browser. Falls back to plain OCR.
 let eyes = null;
 async function loadEyes(onStatus) {
   if (eyes) return eyes;
@@ -1107,7 +1111,7 @@ async function loadEyes(onStatus) {
     if (p.status === "progress" && p.total) {
       seen[p.file] = [p.loaded, p.total];
       const [l, t] = Object.values(seen).reduce((a, v) => [a[0] + v[0], a[1] + v[1]], [0, 0]);
-      onStatus(`Loading Lumo's eyes · ${(l / 1e6).toFixed(0)} of ~180 MB (first photo only)`);
+      onStatus(`Loading Zenyo's eyes · ${(l / 1e6).toFixed(0)} of ~180 MB (first photo only)`);
     }
   };
   const device = navigator.gpu ? "webgpu" : "wasm";
@@ -1141,7 +1145,7 @@ function looksReal(s) {
   for (let i = 0; i + 24 <= s.length; i += 12) { const c = s.slice(i, i + 24); if ((chunks[c] = (chunks[c] || 0) + 1) === 3) repeats++; }
   return ok > 0.97 && repeats < 2 && (words.length < 6 || common > 0);
 }
-// Phones run out of memory with Lumo + the 180 MB vision model loaded together, and the browser reloads the page.
+// Phones run out of memory with Zenyo + the 180 MB vision model loaded together, and the browser reloads the page.
 // So phones (and low-memory devices) use the light text reader; big computers use the vision model.
 const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const lowMemory = (navigator.deviceMemory || 8) <= 4 || /CrOS/.test(navigator.userAgent); // Chromebooks: usually 4 GB
@@ -1326,7 +1330,7 @@ function drawAttachments() {
     if (a.kind === "image" && !reading(a)) {
       // show what was read, so a wrong number can be fixed before sending
       const wrap = document.createElement("div"); wrap.className = "readbox";
-      const lab = document.createElement("label"); lab.textContent = "What Lumo read (fix anything that's wrong):";
+      const lab = document.createElement("label"); lab.textContent = "What Zenyo read (fix anything that's wrong):";
       const ta = document.createElement("textarea"); ta.rows = Math.min(6, Math.max(2, a.text.split("\n").length)); ta.value = a.text;
       ta.setAttribute("aria-label", "Text read from " + a.name);
       ta.addEventListener("input", () => { a.text = ta.value; s.textContent = a.text ? `${a.text.length.toLocaleString()} characters read` : "No words"; });
@@ -1384,7 +1388,7 @@ async function addFile(file) {
       file = await cropPhoto(file);
       a.thumb = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(URL.createObjectURL(file)); r.readAsDataURL(file); });
       drawAttachments();
-      // Lumo Cloud can look at the photo itself (handwriting, diagrams, graphs): keep a smaller copy to send
+      // Zenyo Cloud can look at the photo itself (handwriting, diagrams, graphs): keep a smaller copy to send
       if (CLOUD_URL) shrinkImage(file, 1280).then((f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(f); }))
         .then((u) => { if (u && /^data:image\/(jpeg|png|webp);base64,/.test(u) && u.length < 1_450_000) a.image = u; }).catch(() => {});
       a.text = await readPicture(file, (msg) => { a.status = msg; drawAttachments(); });
@@ -1412,7 +1416,7 @@ function setSendIcon(kind) { $("#sendIcon").innerHTML = ICON[kind]; send.setAttr
 async function talk(text) {
   text = text.trim();
   if (busy || (mode === "device" && !window.lumoState.loaded) || attachments.some(reading)) return;
-  const cloudPhoto = mode === "cloud" ? attachments.find((a) => a.image) : null;   // Lumo Cloud looks at the photo itself
+  const cloudPhoto = mode === "cloud" ? attachments.find((a) => a.image) : null;   // Zenyo Cloud looks at the photo itself
   const ready = attachments.filter((a) => a.text || a === cloudPhoto);
   if (!text && !ready.length) return;
   const shown = text || "Solve this and explain the steps.";
@@ -1426,10 +1430,10 @@ async function talk(text) {
   const { row, body } = lumoMsg();
   busy = true; setSendIcon("stop"); window.lumoState.mode = "thinking";
   let reply = "";
-  // Math the engine can solve exactly gets exact steps; Lumo answers everything else.
+  // Math the engine can solve exactly gets exact steps; Zenyo answers everything else.
   // Multiple choice? Solve just the question part, then see which choice the exact answer matches.
   const mc = findChoices(full);
-  // a photo in Cloud mode: the scanner's text may be misread, so let Lumo Cloud read the photo instead of solving a misread problem exactly
+  // a photo in Cloud mode: the scanner's text may be misread, so let Zenyo Cloud read the photo instead of solving a misread problem exactly
   const checked = cloudPhoto && ready.some((a) => a.kind === "image") ? [] : await checkMath(mc ? mc.stem : full);
   if (mc && checked.length === 1) {
     const c = checked[0], pick = matchChoice(c.answer, mc.opts);
@@ -1485,7 +1489,7 @@ async function talk(text) {
         stopTokens: STOP,
         abortSignal: ctrl.signal,
         onNewToken: (_t, _p, current) => {
-          said = current.replace(/<\|(im_end|im_start|endoftext)\|>[\s\S]*$/, "").replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "");
+          said = rebrand(current.replace(/<\|(im_end|im_start|endoftext)\|>[\s\S]*$/, "").replace(/^\s*<think>[\s\S]*?<\/think>\s*/, ""));
           render(el, said, true);
           if (main.scrollHeight - main.scrollTop - main.clientHeight < 160) scrollDown();
         },
@@ -1508,7 +1512,7 @@ async function talk(text) {
         const t = document.createElement("span"); t.className = "thinktag"; t.textContent = "Thinking it through…"; el.append(t);
       };
       const msgs = cloudMessages();
-      if (msgs.some((m) => Array.isArray(m.content))) {   // a photo: show that Lumo is looking at it
+      if (msgs.some((m) => Array.isArray(m.content))) {   // a photo: show that Zenyo is looking at it
         el.replaceChildren(); const t = document.createElement("span"); t.className = "thinktag"; t.textContent = "Looking at your photo…"; el.append(t);
       }
       try { said = await cloudChat(msgs, ctrl.signal, onText, onThink); }
@@ -1519,7 +1523,7 @@ async function talk(text) {
       const thought = !!el.dataset.thinking;
       delete el.dataset.thinking;
       said = said.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "").trim();
-      if (!said && thought) { el.textContent = "Lumo Cloud thought about this one for too long and ran out of room to answer. Try asking again, or split it into smaller questions."; return ""; }
+      if (!said && thought) { el.textContent = "Zenyo Cloud thought about this one for too long and ran out of room to answer. Try asking again, or split it into smaller questions."; return ""; }
       render(el, said, false);
       return said;
     } catch (e) {
@@ -1527,11 +1531,11 @@ async function talk(text) {
       el.replaceChildren();
       const p = document.createElement("p");
       p.textContent = e.message === "photo-limit"
-        ? "You've used today's photo questions on Lumo Cloud (15 a day; it resets tomorrow). You can type the problem instead, or use on-device Lumo Pro, which reads photos on your device."
+        ? "You've used today's photo questions on Zenyo Cloud (15 a day; it resets tomorrow). You can type the problem instead, or use on-device Zenyo Pro, which reads photos on your device."
         : e.message === "limit"
-        ? "Lumo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Lumo Pro: it downloads once (about 400 MB) and then runs right on your device."
-        : "Lumo Cloud can't be reached right now (no internet, or the server is down). You can use on-device Lumo Pro instead.";
-      const b = document.createElement("button"); b.className = "cloudbtn"; b.textContent = "Use on-device Lumo Pro";
+        ? "Zenyo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Zenyo Pro: it downloads once (about 400 MB) and then runs right on your device."
+        : "Zenyo Cloud can't be reached right now (no internet, or the server is down). You can use on-device Zenyo Pro instead.";
+      const b = document.createElement("button"); b.className = "cloudbtn"; b.textContent = "Use on-device Zenyo Pro";
       b.addEventListener("click", () => { b.disabled = true; setMode("device"); });
       el.append(p, b);
       return "";
@@ -1539,7 +1543,7 @@ async function talk(text) {
   }
   const asked = mode === "cloud" ? null : prompt();
   reply = mode === "cloud" ? await speakCloud(body) : await speak(asked, body);
-  if (!reply) { if (mode !== "cloud" || !body.childNodes.length) body.textContent = "(Lumo didn't say anything. Try asking another way.)"; }
+  if (!reply) { if (mode !== "cloud" || !body.childNodes.length) body.textContent = "(Zenyo didn't say anything. Try asking another way.)"; }
   else if (mc) {
     let pick = pickedChoice(reply, mc);
     if (!pick && !ctrl.signal.aborted && mode === "device") {   // it explained but never said a letter: finish its reply with "The answer is" and let it fill in just the letter
