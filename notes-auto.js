@@ -1,4 +1,4 @@
-// Lumo class notes: high school automotive technology (organized around the 8 ASE areas, A1-A8). Original text written for Lumo, free to use and sell.
+// Zenyo class notes: high school automotive technology (organized around the 8 ASE areas, A1-A8). Original text written for Zenyo, free to use and sell.
 // Each note: s = subject, t = title, k = extra search words, x = the note. Specs vary by vehicle: always check the service manual.
 window.LUMO_NOTES = (window.LUMO_NOTES || []).concat([
 // ---------- shop safety & tools ----------

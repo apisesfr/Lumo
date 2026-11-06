@@ -1,5 +1,5 @@
-// Lumo class notes: high school biology. Written for Lumo by apisesfr's project (original text, free to use and sell).
-// Each note: t = title, k = extra search words, x = the note. The site finds the best 1-2 notes for a question and hands them to Lumo.
+// Zenyo class notes: high school biology. Written for Zenyo by apisesfr's project (original text, free to use and sell).
+// Each note: t = title, k = extra search words, x = the note. The site finds the best 1-2 notes for a question and hands them to Zenyo.
 window.LUMO_NOTES = (window.LUMO_NOTES || []).concat([
 // ---------- science skills & life ----------
 { t: "Characteristics of life", k: "living things alive nonliving traits of life", x: "All living things: are made of cells, use energy (metabolism), grow and develop, reproduce, respond to their environment (stimuli), keep a stable inside (homeostasis), have DNA, and as groups evolve over time. Viruses are not usually called living because they are not cells and can only reproduce inside a host cell." },
