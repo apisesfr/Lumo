@@ -536,7 +536,9 @@ function prompt() {
 }
 function cloudMessages() {   // same notes + multiple-choice instruction, as chat messages for Lumo Cloud
   const { sys, keep } = promptParts(16000);
-  return (sys ? [{ role: "system", content: sys }] : []).concat(keep);
+  // the notes are Lumo's own study notes, not something the student gave: use them quietly
+  const s = sys && sys.replace(/^You are Lumo\. Here are class notes that match the student's question\./, "These are your own reference notes for this question (the student can't see them, so never say \"your notes\" or \"the notes\").");
+  return (s ? [{ role: "system", content: s }] : []).concat(keep);
 }
 function promptParts(MEMORY_CHARS = MEMORY_DEVICE) {
   // which notes fit? look at the newest question (and the one before it, for short follow-ups like "explain more")
