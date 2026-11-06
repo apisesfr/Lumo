@@ -42,6 +42,10 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 .tag{font-family:var(--f-mono);font-size:11px;color:var(--mist);border:1px solid var(--line2);border-radius:999px;padding:2px 8px;letter-spacing:.02em}
 .top .new{margin-left:auto;display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:12px;border:1px solid var(--line2);color:var(--mist);font-size:14px;transition:color .2s,border-color .2s,background .2s}
 .top .new:hover{color:var(--cream);border-color:rgba(255,189,89,.4);background:rgba(255,189,89,.06)}
+#modeBtn:not([hidden]) + #newChat{margin-left:8px}
+.top .new{white-space:nowrap}
+.cloudbtn{margin-top:10px;padding:8px 13px;border-radius:12px;border:1px solid rgba(255,189,89,.4);color:var(--cream);background:rgba(255,189,89,.08);font-size:14px;cursor:pointer}
+.cloudbtn:disabled{opacity:.5;cursor:default}
 .top .new svg{width:16px;height:16px}
 
 /* scroll area */
@@ -168,6 +172,7 @@ button:disabled{opacity:.35;cursor:default}
     <div class="mark" aria-hidden="true"></div>
     <div class="brand">Lumo</div>
     <span class="tag" id="ver">v1.1</span>
+    <button class="new" id="modeBtn" title="Switch between Lumo Cloud (smarter, on a server) and on-device Lumo Pro (private)" hidden></button>
     <button class="new" id="newChat" title="Start a new chat">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New chat
     </button>
@@ -301,14 +306,79 @@ const svgEl = (html) => { const t = document.createElement("template"); t.innerH
 $("#ver").textContent = /^\d/.test(VERSION) ? "v" + VERSION : VERSION;
 let wllama, convo = [], busy = false, stop = null;
 
+/* ---------- Lumo Cloud: a bigger AI on a free Cloudflare Worker (cloud/worker.js), with a daily limit.
+   When it's out of free messages or offline, the site offers the on-device Lumo Pro instead. ---------- */
+const CLOUD_DEFAULT = "";   // the Worker's URL, e.g. "https://lumo-cloud.<name>.workers.dev" (empty = cloud mode off)
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const CLOUD_URL = (store.get("lumo.cloudUrl") || CLOUD_DEFAULT).replace(/\/+$/, "");
+let mode = CLOUD_URL && store.get("lumo.mode") !== "device" ? "cloud" : "device";
+let booting = null;
+const LEDE = {
+  device: "A free AI made by a student, for students. Lumo runs entirely in your browser, so your messages, files and photos never leave your device.",
+  cloud: "A free AI made by a student, for students. Lumo Cloud uses a much bigger AI on a server: smarter answers and nothing to download. Your messages are sent to Cloudflare to answer them, so don't share personal info. Switch to On-device for full privacy.",
+};
+function showMode() {
+  const b = $("#modeBtn");
+  b.hidden = !CLOUD_URL;
+  b.textContent = mode === "cloud" ? "⚡ Cloud" : "🔒 On-device";
+  b.setAttribute("aria-label", mode === "cloud" ? "Using Lumo Cloud. Switch to on-device Lumo Pro" : "Using on-device Lumo Pro. Switch to Lumo Cloud");
+  $(".lede").textContent = LEDE[mode];
+  for (const li of document.querySelectorAll(".facts li")) li.hidden = mode === "cloud";
+  $("#ver").textContent = mode === "cloud" ? "Cloud" : (/^\d/.test(VERSION) ? "v" + VERSION : VERSION);
+}
+function enableInput() {
+  $("#status").hidden = true; $("#ideas").hidden = false;
+  for (const el of [input, send, $("#attachBtn"), $("#camBtn")]) el.disabled = false;
+  if (matchMedia("(pointer:fine)").matches) input.focus();
+}
+function setMode(m) {
+  if (busy || m === mode) return;
+  mode = m; store.set("lumo.mode", m); showMode();
+  if (m === "cloud") enableInput();
+  else if (!wllama || !window.lumoState.loaded) { for (const el of [input, send]) el.disabled = true; $("#status").hidden = false; $("#ideas").hidden = true; boot(); }
+}
+$("#modeBtn").addEventListener("click", () => setMode(mode === "cloud" ? "device" : "cloud"));
+
+/** Stream a reply from Lumo Cloud. Calls onText(full text so far). Throws Error("limit") / Error("offline"). */
+async function cloudChat(messages, signal, onText) {
+  let res;
+  try {
+    res = await fetch(CLOUD_URL + "/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages }), signal });
+  } catch (e) { if (e.name === "AbortError") throw e; throw new Error("offline"); }
+  if (res.status === 429) throw new Error("limit");
+  if (!res.ok || !res.body) throw new Error("offline");
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", text = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith("data:")) continue;
+      const d = line.slice(5).trim();
+      if (!d || d === "[DONE]") continue;
+      try {
+        const j = JSON.parse(d);
+        if (j.error) throw new Error(j.error === "limit" ? "limit" : "offline");
+        const piece = j.response ?? j.choices?.[0]?.delta?.content ?? "";
+        if (piece) { text += piece; onText(text); }
+      } catch (e) { if (e.message === "limit" || e.message === "offline") throw e; }
+    }
+  }
+  return text;
+}
+
 function status(text, isErr) {
   const s = $("#status"); s.replaceChildren();
   const span = document.createElement("span"); if (isErr) span.className = "err"; span.textContent = text; s.append(span);
 }
 
-async function boot() {
+function boot() { return (booting ||= bootDevice().finally(() => { booting = null; })); }
+async function bootDevice() {
   try {
-    wllama = new Wllama({ "single-thread/wllama.wasm": CDN + "single-thread/wllama.wasm", "multi-thread/wllama.wasm": CDN + "multi-thread/wllama.wasm" });
+    wllama = wllama || new Wllama({ "single-thread/wllama.wasm": CDN + "single-thread/wllama.wasm", "multi-thread/wllama.wasm": CDN + "multi-thread/wllama.wasm" });
     await wllama.loadModelFromUrl(MODEL_URLS, {
       n_ctx: 4096,
       progressCallback: ({ loaded, total }) => {
@@ -316,11 +386,10 @@ async function boot() {
         status(`Downloading Lumo · ${Math.round(p * 100)}% · ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB (first visit only)`);
       },
     });
-    window.lumoState.mode = "idle";
-    $("#status").hidden = true; $("#ideas").hidden = false;
-    for (const el of [input, send, $("#attachBtn"), $("#camBtn")]) el.disabled = false;
-    if (matchMedia("(pointer:fine)").matches) input.focus();
+    window.lumoState.mode = "idle"; window.lumoState.loaded = true;
+    if (mode === "device") enableInput();
   } catch (e) {
+    wllama = null;
     window.lumoState.mode = "idle";
     status("Lumo couldn't start on this device. Try Chrome, Edge or Safari on a newer phone or laptop. (" + (e && e.message ? e.message : e) + ")", true);
     console.error(e);
@@ -372,7 +441,13 @@ function chem(text) {
 function inline(parent, text) {
   text.split(/`([^`\n]+)`/).forEach((part, i) => {
     if (!part) return;
-    if (i % 2) { const c = document.createElement("code"); c.textContent = part; parent.append(c); } else parent.append(chem(part));
+    if (i % 2) { const c = document.createElement("code"); c.textContent = part; parent.append(c); return; }
+    // light markdown: "## Heading" lines and **bold** become bold text
+    part = part.replace(/^#{1,6}\s+(.+)$/gm, "**$1**");
+    part.split(/\*\*([^*\n]+)\*\*/).forEach((bit, j) => {
+      if (!bit) return;
+      if (j % 2) { const b = document.createElement("b"); b.append(chem(bit)); parent.append(b); } else parent.append(chem(bit));
+    });
   });
 }
 function render(body, text, live) {
@@ -395,7 +470,7 @@ function render(body, text, live) {
 }
 
 // How much chat Lumo keeps in mind (~2,500 tokens; the model runs with a 4,096-token window).
-const MEMORY_CHARS = 9000;
+const MEMORY_DEVICE = 9000;
 
 // ---- class notes: find the notes that match a question (simple BM25 search), so Lumo answers from facts instead of guessing ----
 const NOTE_STOP = new Set("a an the is are was were be been of to in on at by for with and or but if then so as it its this that these those what which who whom whose how why when where do does did can could would should will shall may might must i you he she we they me my your our their them his her about from into than also just not no yes please explain tell describe give define definition mean means meaning lumo bro yo hey hi".split(" "));
@@ -454,6 +529,16 @@ const NOT_BIO = /\b(capital|country|countries|city|history|change (my |the |your
 window.__notes = findNotes;
 
 function prompt() {
+  const { sys, keep } = promptParts();
+  let p = sys ? `<|im_start|>system\n${sys}<|im_end|>\n` : "";
+  for (const m of keep) p += `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`;
+  return p + "<|im_start|>assistant\n<think>\n\n</think>\n\n"; // Lumo Pro answers directly (no "thinking" mode)
+}
+function cloudMessages() {   // same notes + multiple-choice instruction, as chat messages for Lumo Cloud
+  const { sys, keep } = promptParts(16000);
+  return (sys ? [{ role: "system", content: sys }] : []).concat(keep);
+}
+function promptParts(MEMORY_CHARS = MEMORY_DEVICE) {
   // which notes fit? look at the newest question (and the one before it, for short follow-ups like "explain more")
   const users = convo.filter((m) => m.role === "user");
   let notes = users.length ? findNotes(users[users.length - 1].content) : [];
@@ -471,9 +556,7 @@ function prompt() {
     const c = m.content.length > room ? (m.role === "user" ? m.content.slice(-room) : m.content.slice(0, room)) : m.content;
     keep.unshift({ role: m.role, content: c }); size += c.length;
   }
-  let p = sys ? `<|im_start|>system\n${sys}<|im_end|>\n` : "";
-  for (const m of keep) p += `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`;
-  return p + "<|im_start|>assistant\n<think>\n\n</think>\n\n"; // Lumo Pro answers directly (no "thinking" mode)
+  return { sys, keep };
 }
 
 /* ---------- exact math checker (nerdamer): small AIs guess at math, a solver doesn't ---------- */
@@ -1164,7 +1247,7 @@ function setSendIcon(kind) { $("#sendIcon").innerHTML = ICON[kind]; send.setAttr
 
 async function talk(text) {
   text = text.trim();
-  if (busy || !wllama || attachments.some(reading)) return;
+  if (busy || (mode === "device" && !window.lumoState.loaded) || attachments.some(reading)) return;
   const ready = attachments.filter((a) => a.text);
   if (!text && !ready.length) return;
   const shown = text || "Solve this and explain the steps.";
@@ -1246,12 +1329,35 @@ async function talk(text) {
     render(el, said, false);
     return said;
   }
-  const asked = prompt();
-  reply = await speak(asked, body);
-  if (!reply) body.textContent = "(Lumo didn't say anything. Try asking another way.)";
+  async function speakCloud(el) {
+    let said = "";
+    try {
+      said = await cloudChat(cloudMessages(), ctrl.signal, (t) => {
+        said = t.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, ""); render(el, said, true);
+        if (main.scrollHeight - main.scrollTop - main.clientHeight < 160) scrollDown();
+      });
+      said = said.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "").trim();
+      render(el, said, false);
+      return said;
+    } catch (e) {
+      if (e && e.name === "AbortError") { render(el, said.trim(), false); return said.trim(); }
+      el.replaceChildren();
+      const p = document.createElement("p");
+      p.textContent = e.message === "limit"
+        ? "Lumo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Lumo Pro: it downloads once (about 400 MB) and then runs right on your device."
+        : "Lumo Cloud can't be reached right now (no internet, or the server is down). You can use on-device Lumo Pro instead.";
+      const b = document.createElement("button"); b.className = "cloudbtn"; b.textContent = "Use on-device Lumo Pro";
+      b.addEventListener("click", () => { b.disabled = true; setMode("device"); });
+      el.append(p, b);
+      return "";
+    }
+  }
+  const asked = mode === "cloud" ? null : prompt();
+  reply = mode === "cloud" ? await speakCloud(body) : await speak(asked, body);
+  if (!reply) { if (mode !== "cloud" || !body.childNodes.length) body.textContent = "(Lumo didn't say anything. Try asking another way.)"; }
   else if (mc) {
     let pick = pickedChoice(reply, mc);
-    if (!pick && !ctrl.signal.aborted) {   // it explained but never said a letter: finish its reply with "The answer is" and let it fill in just the letter
+    if (!pick && !ctrl.signal.aborted && mode === "device") {   // it explained but never said a letter: finish its reply with "The answer is" and let it fill in just the letter
       let tail = "";
       try { await wllama.createCompletion(asked + reply + "\n\nThe answer is", { nPredict: 5, sampling: { temp: 0 }, stopTokens: STOP, onNewToken: (_t, _p, c) => { tail = c; } }); } catch {}
       pick = pickedChoice("The answer is" + tail, mc);
@@ -1260,7 +1366,7 @@ async function talk(text) {
     if (pick) body.append(choiceBadge(mc, pick));
   }
   row.classList.remove("thinking");
-  convo.push({ role: "assistant", content: reply }); saveChat();
+  if (reply) { convo.push({ role: "assistant", content: reply }); saveChat(); }
   busy = false; stop = null; setSendIcon("send"); window.lumoState.mode = "idle";
   if (matchMedia("(pointer:fine)").matches) input.focus();
 }
@@ -1298,7 +1404,8 @@ function restoreChat() {
   }
 }
 restoreChat();
-boot();
+showMode();
+if (mode === "cloud") enableInput(); else boot();   // cloud mode: nothing to download
 </script>
 </body>
 </html>
