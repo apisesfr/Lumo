@@ -60,6 +60,39 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 .limitcard .lc-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
 .limitcard .lc-bar>div{height:100%;width:0;background:var(--cream);transition:width .3s}
 .limitcard .err{color:var(--bad)}
+.authbg{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.6);overflow-y:auto}
+.authbox{width:min(400px,100%);padding:26px 22px 18px;border-radius:22px;background:#2a2a2a;border:1px solid rgba(255,255,255,.1);box-shadow:0 24px 60px rgba(0,0,0,.5);text-align:center}
+.authbox .mark{width:40px;height:40px;margin:0 auto 10px;border-radius:50%;background:radial-gradient(circle at 38% 36%,#fff7e0 0 10%,var(--amber) 38%,var(--ember) 100%)}
+.authbox h2{margin:0 0 6px;font-size:21px;font-weight:600}
+.authbox .lead{margin:0 0 16px;color:var(--mist);font-size:14px;line-height:1.5}
+.authbox .tabs{display:flex;gap:4px;padding:4px;margin:0 0 14px;border-radius:12px;background:rgba(255,255,255,.05)}
+.authbox .tabs button{flex:1;padding:8px;border-radius:9px;font-size:14px;color:var(--mist)}
+.authbox .tabs button.on{background:#3a3a3a;color:var(--cream);font-weight:600}
+.authbox form{display:flex;flex-direction:column;gap:10px;text-align:left}
+.authbox label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--mist)}
+.authbox input[type=text],.authbox input[type=password]{padding:11px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#1f1f1f;color:var(--cream);font:16px var(--f-body)}
+.authbox input:focus{outline:none;border-color:rgba(255,255,255,.4)}
+.autherr{margin:0;min-height:1em;color:var(--bad);font-size:13px}
+.autherr:empty{display:none}
+.authgo{padding:12px;border-radius:999px;background:var(--cream);color:#111;font-weight:600;font-size:15px}
+.authgo:hover:not(:disabled){background:#fff}
+.authgo.danger{background:#e5534b;color:#fff}
+.authlink{margin-top:10px;font-size:13px;color:var(--mist);text-decoration:underline}
+.authno{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;margin-top:16px;padding:13px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:transparent}
+.authno:hover{background:rgba(255,255,255,.05)}
+.authno b{font-size:16px;font-weight:600;color:var(--cream)}
+.authno span{font-size:13px;color:var(--mist)}
+.authno.small{padding:9px;font-size:14px;color:var(--mist)}
+.reccode{margin:4px 0 2px;padding:14px;border-radius:14px;background:#1f1f1f;border:1px dashed rgba(255,255,255,.3);font:600 19px var(--f-mono);letter-spacing:.02em;word-break:break-all}
+.authbox .check{flex-direction:row;align-items:center;justify-content:center;gap:8px;margin:14px 0;color:var(--cream);font-size:13.5px}
+.authbox .check+.authgo{width:100%}
+.guestbox{margin:4px 6px;padding:12px;border-radius:12px;background:rgba(255,255,255,.04);font-size:13px;color:var(--mist)}
+.guestbox p{margin:0 0 8px}
+.guestbox button,.side-foot .signin{width:100%;padding:8px;border-radius:10px;background:var(--cream);color:#111;font-weight:600;font-size:13.5px}
+.side-foot .signin{margin-bottom:8px}
+.side-foot .who b{color:var(--cream)}
+.side-foot .acctrow{display:flex;gap:12px;margin:4px 0 8px}
+.side-foot .acctrow button{font-size:12px;color:var(--mist);text-decoration:underline;padding:0}
 .pronote{max-width:768px;margin:0 auto 8px;padding:7px 14px;border-radius:12px;background:rgba(255,255,255,.04);font-size:12.5px;color:var(--mist);text-align:center}
 .pronote b{color:var(--cream);font-weight:600}
 @keyframes thinkpulse{50%{opacity:.45}}
@@ -1678,24 +1711,53 @@ function newChat() {
 $("#newChat").addEventListener("click", newChat);
 $("#sideNew").addEventListener("click", newChat);
 
-/* ---------- saved chats (only in this browser) + keep the chat if the phone reloads the page ---------- */
+/* ---------- saved chats ----------
+   When Zenyo's server has accounts: signed-in chats are saved to the account (any device); without an account nothing is
+   saved (the student picked "No thanks"). When it doesn't: chats are saved in this browser, like before.
+   The open chat is always kept for this visit, in case a phone reloads the page. */
 let chatId = null;
-const loadHistory = () => { try { return JSON.parse(store.get("zenyo.history") || "[]"); } catch { return []; } };
+let accountsOn = false;   // the server says it has accounts (checked at startup)
+let acct = null; try { acct = JSON.parse(store.get("zenyo.account") || "null"); } catch {}
+let serverChats = [];
+const loadLocal = () => { try { return JSON.parse(store.get("zenyo.history") || "[]"); } catch { return []; } };
+const loadHistory = () => (accountsOn ? (acct ? serverChats : []) : loadLocal());
 const slim = () => convo.slice(-40).map((m) => ({ role: m.role, content: m.content, shown: m.shown }));
+async function api(method, path, body) {
+  let r;
+  try {
+    r = await fetch(CLOUD_URL + path, { method, headers: { "Content-Type": "application/json", ...(acct ? { Authorization: "Bearer " + acct.token } : {}) },
+      body: body ? JSON.stringify(body) : undefined });
+  } catch { throw new Error("Couldn't reach Zenyo's server. Check your internet and try again."); }
+  let j = {}; try { j = await r.json(); } catch {}
+  if (r.status === 401 && acct && !/^\/auth\/(login|signup|reset)$/.test(path)) signedOut();
+  if (!r.ok) throw new Error(j.error || "Something went wrong. Try again.");
+  return j;
+}
 function saveChat() {
   try { sessionStorage.setItem("zenyo.chat", JSON.stringify({ id: chatId, msgs: slim() })); } catch {}
   const first = convo.find((m) => m.role === "user");
-  if (!first) return;
+  if (!first) { drawHistory(); return; }
   chatId ||= Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const title = (first.shown || first.content).replace(/\s+/g, " ").trim().slice(0, 60) || "New chat";
-  const hist = loadHistory().filter((c) => c.id !== chatId);
-  hist.unshift({ id: chatId, title, t: Date.now(), msgs: slim() });
-  store.set("zenyo.history", JSON.stringify(hist.slice(0, 40)));
+  const entry = { id: chatId, title, t: Date.now(), msgs: slim() };
+  if (accountsOn && acct) {
+    serverChats = [entry, ...serverChats.filter((c) => c.id !== chatId)];
+    api("PUT", "/chats/" + entry.id, { title: entry.title, msgs: entry.msgs }).catch(() => {});
+  } else if (!accountsOn) {
+    store.set("zenyo.history", JSON.stringify([entry, ...loadLocal().filter((c) => c.id !== chatId)].slice(0, 40)));
+  }
   try { sessionStorage.setItem("zenyo.chat", JSON.stringify({ id: chatId, msgs: slim() })); } catch {}
   drawHistory();
 }
 function drawHistory() {
   const box = $("#hist"); box.replaceChildren();
+  drawAccount();
+  if (accountsOn && !acct) {   // "No thanks": nothing is saved
+    const n = document.createElement("div"); n.className = "guestbox";
+    const p = document.createElement("p"); p.textContent = "Your chats aren't being saved.";
+    const b = document.createElement("button"); b.textContent = "Sign up to save chats"; b.addEventListener("click", () => openAuth("signup"));
+    n.append(p, b); box.append(n); return;
+  }
   const hist = loadHistory();
   if (!hist.length) { const n = document.createElement("div"); n.className = "none"; n.textContent = "No chats yet"; box.append(n); return; }
   for (const c of hist) {
@@ -1704,10 +1766,148 @@ function drawHistory() {
     t.addEventListener("click", () => openChat(c.id));
     const x = document.createElement("button"); x.className = "x"; x.setAttribute("aria-label", "Delete chat: " + c.title); x.append(svgEl(ICON.x));
     x.addEventListener("click", () => {
-      store.set("zenyo.history", JSON.stringify(loadHistory().filter((h) => h.id !== c.id)));
+      if (accountsOn && acct) { serverChats = serverChats.filter((h) => h.id !== c.id); api("DELETE", "/chats/" + c.id).catch(() => {}); }
+      else store.set("zenyo.history", JSON.stringify(loadLocal().filter((h) => h.id !== c.id)));
       if (c.id === chatId) newChat(); else drawHistory();
     });
     it.append(t, x); box.append(it);
+  }
+}
+
+/* ---------- accounts: username + password, no email (only when Zenyo's server has them turned on) ---------- */
+function drawAccount() {
+  const f = $(".side-foot"); f.replaceChildren();
+  const made = document.createElement("div"); made.append("Made by ");
+  const a = document.createElement("a"); a.href = "https://github.com/apisesfr"; a.target = "_blank"; a.rel = "noopener"; a.textContent = "apisesfr"; made.append(a);
+  if (!accountsOn) { const t = document.createElement("div"); t.textContent = "Chats are saved only on this device."; f.append(t, made); return; }
+  if (acct) {
+    const who = document.createElement("div"); who.className = "who";
+    const b = document.createElement("b"); b.textContent = acct.username; who.append("Signed in as ", b);
+    const row = document.createElement("div"); row.className = "acctrow";
+    const out = document.createElement("button"); out.textContent = "Log out";
+    out.addEventListener("click", async () => { try { await api("POST", "/auth/logout", {}); } catch {} signedOut(); newChat(); });
+    const del = document.createElement("button"); del.textContent = "Delete account"; del.addEventListener("click", () => openAuth("delete"));
+    row.append(out, del); f.append(who, row, made);
+  } else {
+    const b = document.createElement("button"); b.className = "signin"; b.textContent = "Sign up or log in"; b.addEventListener("click", () => openAuth("login"));
+    f.append(b, made);
+  }
+}
+function signedOut() {
+  acct = null; serverChats = [];
+  try { localStorage.removeItem("zenyo.account"); } catch {}
+  drawHistory();
+}
+async function signedIn(j) {
+  acct = { token: j.token, username: j.username };
+  store.set("zenyo.account", JSON.stringify(acct));
+  // chats saved in this browser before accounts existed move into the account
+  const local = loadLocal();
+  for (const c of local) { try { await api("PUT", "/chats/" + c.id, { title: c.title, msgs: c.msgs }); } catch {} }
+  if (local.length) { try { localStorage.removeItem("zenyo.history"); } catch {} }
+  if (convo.some((m) => m.role === "user")) saveChat();   // the chat that's open right now
+  await loadServerChats();
+}
+async function loadServerChats() {
+  try { serverChats = (await api("GET", "/chats")).chats || []; } catch {}
+  drawHistory();
+}
+
+let authEl = null;
+function closeAuth() { if (authEl) { authEl.remove(); authEl = null; } }
+function openAuth(view) {
+  closeAuth();
+  const bg = document.createElement("div"); bg.className = "authbg";
+  const box = document.createElement("div"); box.className = "authbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+  bg.append(box); document.body.append(bg); authEl = bg;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const field = (label, type, ac) => { const l = el("label", null, label); const i = document.createElement("input"); i.type = type; i.autocomplete = ac; i.required = true; i.spellcheck = false; i.autocapitalize = "off"; l.append(i); return [l, i]; };
+  const draw = (v) => {
+    box.replaceChildren();
+    const mark = el("div", "mark"); mark.setAttribute("aria-hidden", "true");
+    if (v === "recovery") return;   // drawn by showRecovery
+    const h = el("h2", null, v === "delete" ? "Delete your account?" : v === "reset" ? "Reset your password" : "Save your chats");
+    const p = el("p", "lead", v === "delete" ? "This deletes your account and every saved chat for good. Type your password to confirm."
+      : v === "reset" ? "Use the recovery code you got when you signed up."
+      : "Make a free Zenyo account to keep your chats on any device. No email needed.");
+    box.append(mark, h, p);
+    if (v === "signup" || v === "login") {
+      const tabs = el("div", "tabs");
+      for (const [k, t] of [["signup", "Sign up"], ["login", "Log in"]]) {
+        const b = el("button", k === v ? "on" : "", t); b.type = "button"; b.addEventListener("click", () => draw(k)); tabs.append(b);
+      }
+      box.append(tabs);
+    }
+    const form = document.createElement("form"); form.noValidate = true;
+    const [lu, u] = field("Username", "text", "username");
+    const [lp, pw] = field(v === "reset" ? "New password" : "Password", "password", v === "login" || v === "delete" ? "current-password" : "new-password");
+    const [lr, rc] = field("Recovery code", "text", "off"); rc.placeholder = "e.g. tiger-maple-4821-river";
+    if (v === "signup") { u.placeholder = "not your real name"; pw.placeholder = "at least 8 characters"; }
+    if (v === "delete") form.append(lp); else if (v === "reset") form.append(lu, lr, lp); else form.append(lu, lp);
+    const err = el("p", "autherr"); err.setAttribute("role", "alert");
+    const go = el("button", "authgo", v === "signup" ? "Create account" : v === "login" ? "Log in" : v === "reset" ? "Reset password" : "Delete my account");
+    go.type = "submit"; if (v === "delete") go.classList.add("danger");
+    form.append(err, go);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault(); err.textContent = "";
+      const name = u.value.trim().toLowerCase();
+      if (v !== "delete" && !/^[a-z0-9_]{3,20}$/.test(name)) { err.textContent = "Usernames are 3 to 20 letters, numbers or _"; u.focus(); return; }
+      if (v === "reset" && !rc.value.trim()) { err.textContent = "Enter your recovery code"; rc.focus(); return; }
+      if (pw.value.length < 8 && v !== "login" && v !== "delete") { err.textContent = "Passwords need at least 8 characters"; pw.focus(); return; }
+      if (!pw.value) { err.textContent = "Enter your password"; pw.focus(); return; }
+      go.disabled = true; const label = go.textContent; go.textContent = "One sec…";
+      try {
+        if (v === "delete") {
+          await api("DELETE", "/account", { password: pw.value });
+          signedOut(); closeAuth(); newChat(); return;
+        }
+        const j = await api("POST", v === "signup" ? "/auth/signup" : v === "login" ? "/auth/login" : "/auth/reset",
+          v === "reset" ? { username: name, recovery: rc.value, newPassword: pw.value } : { username: name, password: pw.value });
+        await signedIn(j);
+        if (j.recovery) showRecovery(j.recovery, v === "reset"); else closeAuth();
+      } catch (ex) { err.textContent = ex.message; go.disabled = false; go.textContent = label; }
+    });
+    box.append(form);
+    if (v === "login") { const f = el("button", "authlink", "Forgot your password?"); f.type = "button"; f.addEventListener("click", () => draw("reset")); box.append(f); }
+    if (v === "reset") { const f = el("button", "authlink", "Back to log in"); f.type = "button"; f.addEventListener("click", () => draw("login")); box.append(f); }
+    if (v === "delete") { const c = el("button", "authno small", "Cancel"); c.type = "button"; c.addEventListener("click", closeAuth); box.append(c); }
+    else if (!acct) {
+      const no = el("button", "authno");
+      const b = el("b", null, "No thanks"); const s = el("span", null, "Your chats won't be saved");
+      no.append(b, s); no.type = "button";
+      no.addEventListener("click", () => { try { sessionStorage.setItem("zenyo.guestOk", "1"); } catch {} closeAuth(); drawHistory(); });
+      box.append(no);
+    } else { const c = el("button", "authno small", "Close"); c.type = "button"; c.addEventListener("click", closeAuth); box.append(c); }
+    (v === "delete" ? pw : v === "reset" ? u : u).focus();
+  };
+  const showRecovery = (code, again) => {
+    box.replaceChildren();
+    const h = el("h2", null, again ? "Password changed" : "You're in!");
+    const p = el("p", "lead", "Write down your recovery code. It's the only way back in if you forget your password, because there's no email.");
+    const c = el("div", "reccode", code);
+    const copy = el("button", "authlink", "Copy code"); copy.type = "button";
+    copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(code); copy.textContent = "Copied"; } catch { copy.textContent = "Couldn't copy, write it down"; } });
+    const lab = el("label", "check"); const cb = document.createElement("input"); cb.type = "checkbox"; lab.append(cb, " I wrote it down or saved it somewhere safe");
+    const go = el("button", "authgo", "Start chatting"); go.type = "button"; go.disabled = true;
+    cb.addEventListener("change", () => { go.disabled = !cb.checked; });
+    go.addEventListener("click", closeAuth);
+    box.append(h, p, c, copy, lab, go);
+  };
+  draw(view);
+}
+async function checkAccounts() {
+  if (!CLOUD_URL) return;
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 6000);
+    const j = await (await fetch(CLOUD_URL + "/", { signal: ctrl.signal })).json();
+    accountsOn = !!j.accounts;
+  } catch { accountsOn = false; }
+  if (!accountsOn) { drawHistory(); return; }
+  if (acct) await loadServerChats();
+  else {
+    drawHistory();
+    let guest = null; try { guest = sessionStorage.getItem("zenyo.guestOk"); } catch {}
+    if (guest !== "1") openAuth("signup");
   }
 }
 function showConvo(msgs) {
@@ -1743,6 +1943,7 @@ function restoreChat() {
 restoreChat();
 showMode();
 if (mode === "cloud") enableInput(); else boot();   // cloud mode: nothing to download
+checkAccounts();
 </script>
 </body>
 </html>
