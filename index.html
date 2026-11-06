@@ -219,6 +219,7 @@ button:disabled{opacity:.35;cursor:default}
 
 <script src="notes-bio.js"></script>
 <script src="notes-auto.js"></script>
+<script src="notes-games.js"></script>
 <script>
 /* ---------- night sky + Lumo's orb (canvas) ---------- */
 (() => {
@@ -399,7 +400,7 @@ const MEMORY_CHARS = 9000;
 // ---- class notes: find the notes that match a question (simple BM25 search), so Lumo answers from facts instead of guessing ----
 const NOTE_STOP = new Set("a an the is are was were be been of to in on at by for with and or but if then so as it its this that these those what which who whom whose how why when where do does did can could would should will shall may might must i you he she we they me my your our their them his her about from into than also just not no yes please explain tell describe give define definition mean means meaning lumo bro yo hey hi".split(" "));
 const stem = (w) => w.replace(/ies$/, "y").replace(/sses$/, "ss").replace(/([^s])s$/, "$1").replace(/(ing|ed)$/, "").replace(/e$/, "");
-const noteWords = (t) => (t.toLowerCase().replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d))).match(/[a-z0-9]+/g) || []).filter((w) => !NOTE_STOP.has(w) && w.length > 1).map(stem);
+const noteWords = (t) => (t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[₀-₉]/g, (d) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(d))).match(/[a-z0-9]+/g) || []).filter((w) => !NOTE_STOP.has(w) && w.length > 1).map(stem);
 let noteIndex = null;
 function buildNoteIndex() {
   const notes = window.LUMO_NOTES || [], df = new Map();
@@ -427,6 +428,9 @@ function findNotes(question, max = 2) {
     .filter((r) => (r.n.s || "bio") !== "bio" || !NOT_BIO.test(question) || r.sc >= 16)
     // car notes only when the question isn't clearly bio/body
     .filter((r) => r.n.s !== "auto" || !NOT_AUTO.test(question) || r.sc >= 12)
+    // video game notes only for questions that are about a game (and not Rust the language or rust on metal);
+    // a game question doesn't get school notes (a Minecraft cow is not a biology question)
+    .filter((r) => { const g = isGameQ(question); return r.n.s === "games" ? g && (!NOT_GAMES.test(question) || r.sc >= 16) : !g || r.sc >= 16; })
     .sort((a, b) => b.sc - a.sc);
   window.lumoNoteScores = scored.slice(0, 4).map((r) => [r.n.t, Math.round(r.sc * 10) / 10]);
   if (!scored.length || scored[0].sc < NOTE_MIN) return [];   // weak match: probably not a class-notes question, so don't distract Lumo
@@ -435,6 +439,17 @@ function findNotes(question, max = 2) {
 }
 const NOT_AUTO = /\b(cells?|organelles?|dna|rna|genes?|photosynthesis|mitosis|meiosis|blood|heart|lungs?|body|plants?|animals?|ecosystem|evolution|enzymes?|protein|bacteria|virus)\b/i;
 let NOTE_MIN = 5;
+const GAME_WORDS = /\b(video ?games?|games?|gaming|gamer|xbox|playstation|ps[45]|nintendo|multiplayer|respawn|esports?|battle royale|speedrun|fps|robux|v-?bucks|fnaf|cod|gta( ?(v|5|6|vi))?|gmod|botw|totk|warzone|nether|creeper|ender ?dragon|pikachu|hyrule|bowser|luigi|dragonborn)\b/i;
+const NOT_GAMES = /\b(iron|oxid\w*|corrosion|metals?|chemical|reaction|programming|cargo|compiler|borrow checker|struct|crate|game theory)\b/i;
+let gameNameRe = null;
+function isGameQ(q) {   // names the game (from the notes' "g"), or uses clear gaming words
+  q = q.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!gameNameRe) {
+    const names = [...new Set((window.LUMO_NOTES || []).filter((n) => n.s === "games" && n.g !== "gaming").map((n) => n.g.toLowerCase()))];
+    gameNameRe = new RegExp("\\b(" + names.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/'/g, "'?")).join("|") + ")\\b", "i");
+  }
+  return GAME_WORDS.test(q) || gameNameRe.test(q);
+}
 const NOT_BIO = /\b(capital|country|countries|city|history|change (my |the |your )?oil|oil change|motor oil|car|truck|engine|vehicle|brakes?|tires?|motor|transmission|excel|spreadsheet|triangle|circle|rectangle|square root|perimeter|polygon|essay|poem|novel|thesis|president|war|congress|python|javascript|code|recipe)\b/i;
 window.__notes = findNotes;
 
