@@ -495,7 +495,8 @@ async function cloudChat(messages, signal, onText, onThink) {
   try {
     res = await fetch(CLOUD_URL + "/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages }), signal });
   } catch (e) { if (e.name === "AbortError") throw e; throw new Error("offline"); }
-  if (res.status === 429) throw new Error("limit");
+  if (res.status === 429) { let j = {}; try { j = await res.json(); } catch {} throw new Error(j.error === "photo-limit" ? "photo-limit" : "limit"); }
+  if (res.status === 400 && messages.some((m) => Array.isArray(m.content))) throw new Error("no-photo");   // server can't take photos: retry as text
   if (!res.ok || !res.body) throw new Error("offline");
   const reader = res.body.getReader(), dec = new TextDecoder();
   let buf = "", text = "";
@@ -596,7 +597,7 @@ function inline(parent, text) {
     if (i % 2) { const c = document.createElement("code"); c.textContent = part; parent.append(c); return; }
     // light markdown: "## Heading" lines and **bold** become bold text
     part = part.replace(/^#{1,6}\s+(.+)$/gm, "**$1**");
-    part.split(/\*\*([^*\n]+)\*\*/).forEach((bit, j) => {
+    part.split(/\*\*([^\n]+?)\*\*/).forEach((bit, j) => {
       if (!bit) return;
       if (j % 2) { const b = document.createElement("b"); b.append(chem(bit)); parent.append(b); } else parent.append(chem(bit));
     });
@@ -690,7 +691,11 @@ function cloudMessages() {   // same notes + multiple-choice instruction, as cha
   const { sys, keep } = promptParts(16000);
   // the notes are Lumo's own study notes, not something the student gave: use them quietly
   const s = sys && sys.replace(/^You are Lumo\. Here are class notes that match the student's question\./, "These are your own reference notes for this question (the student can't see them, so never say \"your notes\" or \"the notes\").");
-  return (s ? [{ role: "system", content: s }] : []).concat(keep);
+  const msgs = (s ? [{ role: "system", content: s }] : []).concat(keep);
+  const last = convo[convo.length - 1];   // the newest question carries its photo, if it has one
+  if (last && last.role === "user" && last.image && msgs.length && msgs[msgs.length - 1].role === "user")
+    msgs[msgs.length - 1] = { role: "user", content: [{ type: "text", text: msgs[msgs.length - 1].content }, { type: "image_url", image_url: { url: last.image } }] };
+  return msgs;
 }
 function promptParts(MEMORY_CHARS = MEMORY_DEVICE) {
   // which notes fit? look at the newest question (and the one before it, for short follow-ups like "explain more")
@@ -1379,6 +1384,9 @@ async function addFile(file) {
       file = await cropPhoto(file);
       a.thumb = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(URL.createObjectURL(file)); r.readAsDataURL(file); });
       drawAttachments();
+      // Lumo Cloud can look at the photo itself (handwriting, diagrams, graphs): keep a smaller copy to send
+      if (CLOUD_URL) shrinkImage(file, 1280).then((f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(f); }))
+        .then((u) => { if (u && /^data:image\/(jpeg|png|webp);base64,/.test(u) && u.length < 1_450_000) a.image = u; }).catch(() => {});
       a.text = await readPicture(file, (msg) => { a.status = msg; drawAttachments(); });
       a.status = a.text ? "" : "No words found in this picture";
     } else {
@@ -1404,13 +1412,14 @@ function setSendIcon(kind) { $("#sendIcon").innerHTML = ICON[kind]; send.setAttr
 async function talk(text) {
   text = text.trim();
   if (busy || (mode === "device" && !window.lumoState.loaded) || attachments.some(reading)) return;
-  const ready = attachments.filter((a) => a.text);
+  const cloudPhoto = mode === "cloud" ? attachments.find((a) => a.image) : null;   // Lumo Cloud looks at the photo itself
+  const ready = attachments.filter((a) => a.text || a === cloudPhoto);
   if (!text && !ready.length) return;
   const shown = text || "Solve this and explain the steps.";
   let full = shown;
-  for (const a of ready) full = `${a.kind === "image" ? `Text from a photo (${a.name})` : `File: ${a.name}`}:\n${a.text.slice(0, 1800)}\n\n` + full;
+  for (const a of ready) if (a.text) full = `${a.kind === "image" ? `Text from a photo (${a.name})` : `File: ${a.name}`}:\n${a.text.slice(0, 1800)}\n\n` + full;
   $("#hero").hidden = true;
-  convo.push({ role: "user", content: full, shown });
+  convo.push({ role: "user", content: full, shown, ...(cloudPhoto ? { image: cloudPhoto.image } : {}) });
   userMsg(shown, ready);
   attachments = []; drawAttachments();
   input.value = ""; autosize();
@@ -1420,7 +1429,8 @@ async function talk(text) {
   // Math the engine can solve exactly gets exact steps; Lumo answers everything else.
   // Multiple choice? Solve just the question part, then see which choice the exact answer matches.
   const mc = findChoices(full);
-  const checked = await checkMath(mc ? mc.stem : full);
+  // a photo in Cloud mode: the scanner's text may be misread, so let Lumo Cloud read the photo instead of solving a misread problem exactly
+  const checked = cloudPhoto && ready.some((a) => a.kind === "image") ? [] : await checkMath(mc ? mc.stem : full);
   if (mc && checked.length === 1) {
     const c = checked[0], pick = matchChoice(c.answer, mc.opts);
     c.simple = false;
@@ -1488,14 +1498,24 @@ async function talk(text) {
   async function speakCloud(el) {
     let said = "";
     try {
-      said = await cloudChat(cloudMessages(), ctrl.signal, (t) => {
+      const onText = (t) => {
         said = t.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, ""); render(el, said, true);
         if (main.scrollHeight - main.scrollTop - main.clientHeight < 160) scrollDown();
-      }, () => {
+      };
+      const onThink = () => {
         if (el.dataset.thinking) return;
         el.dataset.thinking = "1"; el.replaceChildren();
         const t = document.createElement("span"); t.className = "thinktag"; t.textContent = "Thinking it through…"; el.append(t);
-      });
+      };
+      const msgs = cloudMessages();
+      if (msgs.some((m) => Array.isArray(m.content))) {   // a photo: show that Lumo is looking at it
+        el.replaceChildren(); const t = document.createElement("span"); t.className = "thinktag"; t.textContent = "Looking at your photo…"; el.append(t);
+      }
+      try { said = await cloudChat(msgs, ctrl.signal, onText, onThink); }
+      catch (e) {   // the server can't take photos (older version): ask again with just the scanned text
+        if (e.message !== "no-photo") throw e;
+        said = await cloudChat(msgs.map((m) => Array.isArray(m.content) ? { role: m.role, content: m.content[0].text } : m), ctrl.signal, onText, onThink);
+      }
       const thought = !!el.dataset.thinking;
       delete el.dataset.thinking;
       said = said.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "").trim();
@@ -1506,7 +1526,9 @@ async function talk(text) {
       if (e && e.name === "AbortError") { render(el, said.trim(), false); return said.trim(); }
       el.replaceChildren();
       const p = document.createElement("p");
-      p.textContent = e.message === "limit"
+      p.textContent = e.message === "photo-limit"
+        ? "You've used today's photo questions on Lumo Cloud (15 a day; it resets tomorrow). You can type the problem instead, or use on-device Lumo Pro, which reads photos on your device."
+        : e.message === "limit"
         ? "Lumo Cloud is out of free messages for today (it resets every day). You can keep going with on-device Lumo Pro: it downloads once (about 400 MB) and then runs right on your device."
         : "Lumo Cloud can't be reached right now (no internet, or the server is down). You can use on-device Lumo Pro instead.";
       const b = document.createElement("button"); b.className = "cloudbtn"; b.textContent = "Use on-device Lumo Pro";
