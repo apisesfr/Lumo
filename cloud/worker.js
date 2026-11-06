@@ -2,6 +2,7 @@
 // No API key needed: the Worker uses the "AI" binding on your Cloudflare account (free: 10,000 Neurons a day, about 400 chats).
 // Setup steps are in cloud/README.md.
 
+const VERSION = 3;   // shown at the Worker's URL, so you can check the newest code is deployed
 const MODEL = "@cf/google/gemma-4-26b-a4b-it";   // Gemma 4 26B (Apache 2.0), cheap on the free tier
 const ALLOWED_ORIGINS = ["https://apisesfr.github.io", "http://localhost:8790", "http://127.0.0.1:8790"];
 const PER_PERSON_PER_DAY = 40;   // messages per visitor per day (best effort: counted per server, not perfect)
@@ -33,7 +34,7 @@ export default {
     const origin = request.headers.get("Origin") || "";
     if (request.method === "OPTIONS") return new Response(null, { headers: cors(origin) });
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/") return json({ ok: true, name: "Lumo Cloud", model: MODEL }, 200, origin);
+    if (request.method === "GET" && url.pathname === "/") return json({ ok: true, name: "Lumo Cloud", model: MODEL, version: VERSION }, 200, origin);
     if (request.method !== "POST" || url.pathname !== "/chat") return json({ error: "not found" }, 404, origin);
     if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: "forbidden" }, 403, origin);
 
