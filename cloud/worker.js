@@ -62,7 +62,8 @@ export default {
     const messages = [{ role: "system", content: LUMO + (notes ? "\n\n" + notes : "") }, ...clean.filter((m) => m.role !== "system")];
 
     try {
-      const opts = { messages, stream: true, max_tokens: 1200, temperature: 0.6 };
+      // Gemma 4 thinks before it answers and the thinking counts toward the cap, so leave plenty of room (only used tokens cost anything)
+      const opts = { messages, stream: true, max_tokens: 4000, max_completion_tokens: 4000, temperature: 0.6 };
       let stream;
       try {   // answer right away instead of "thinking" first: faster, and about half the cost per chat
         stream = await env.AI.run(MODEL, { ...opts, chat_template_kwargs: { enable_thinking: false } });
