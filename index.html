@@ -437,7 +437,7 @@ const svgEl = (html) => { const t = document.createElement("template"); t.innerH
 $("#ver").textContent = /^\d/.test(VERSION) ? "v" + VERSION : VERSION;
 let wllama, convo = [], busy = false, stop = null;
 
-/* ---------- Lumo Cloud: a bigger AI on a free Cloudflare Worker (cloud/worker.js), with a daily limit.
+/* ---------- Lumo Cloud: the smart mode, answered by Lumo's own server, with a daily limit.
    When it's out of free messages or offline, the site offers the on-device Lumo Pro instead. ---------- */
 const CLOUD_DEFAULT = "https://lumo-cloud.elithornhill.workers.dev";   // the Worker's URL (empty = cloud mode off)
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
